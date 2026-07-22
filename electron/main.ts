@@ -17,6 +17,7 @@ import {
   openComicFolder,
   readComicPage,
 } from './comicSession';
+import { clearTxtSession, openTxtSession, readTxtPage } from './txtSession';
 import { AppStore } from './store';
 
 const isDevRuntime = Boolean(process.defaultApp);
@@ -190,6 +191,7 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
   const lastPage = existing?.lastPage ?? 1;
 
   clearComicSession();
+  clearTxtSession();
 
   if (format === 'comic') {
     try {
@@ -226,15 +228,6 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
   }
 
   const totalPages = existing?.totalPages ?? 1;
-  store.upsertRecent({
-    id,
-    path: filePath,
-    format,
-    title,
-    lastPage,
-    totalPages,
-  });
-
   const result: OpenBookResult = {
     path: filePath,
     title,
@@ -242,15 +235,50 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
     id,
     lastPage,
     totalPages,
+    lastScrollRatio: existing?.lastScrollRatio,
+    lastByteOffset: existing?.lastByteOffset,
   };
 
   if (format === 'txt') {
-    result.textContent = fs.readFileSync(filePath, 'utf8');
-  } else {
-    const buf = fs.readFileSync(filePath);
-    result.fileData = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    const pageResult = openTxtSession(
+      filePath,
+      existing?.lastPage ?? 1,
+      existing?.lastByteOffset,
+    );
+    result.textContent = pageResult.text;
+    result.totalPages = pageResult.totalPages;
+    result.lastPage = pageResult.page;
+    result.textByteLength = pageResult.byteLength;
+    result.textWindowStart = pageResult.startByte;
+    result.textPosition = pageResult.endByte;
+    result.lastByteOffset = pageResult.startByte;
+    store.upsertRecent({
+      id,
+      path: filePath,
+      format,
+      title,
+      lastPage: pageResult.page,
+      totalPages: pageResult.totalPages,
+      lastScrollRatio:
+        pageResult.byteLength > 0 ? pageResult.startByte / pageResult.byteLength : 0,
+      lastByteOffset: pageResult.startByte,
+    });
+    return result;
   }
 
+  store.upsertRecent({
+    id,
+    path: filePath,
+    format,
+    title,
+    lastPage,
+    totalPages,
+    lastScrollRatio: existing?.lastScrollRatio,
+    lastByteOffset: existing?.lastByteOffset,
+  });
+
+  const buf = fs.readFileSync(filePath);
+  result.fileData = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   return result;
 }
 
@@ -320,16 +348,34 @@ function registerIpc(): void {
 
   ipcMain.handle('books:close', () => {
     clearComicSession();
+    clearTxtSession();
   });
 
   ipcMain.handle('comic:readPage', async (_event, index: number) => {
     return readComicPage(index);
   });
 
+  ipcMain.handle('txt:readPage', (_event, page: number) => {
+    return readTxtPage(page);
+  });
+
   ipcMain.handle(
     'books:updateProgress',
-    (_event, idOrPath: string, lastPage: number, totalPages?: number) => {
-      return store.updateProgress(idOrPath, lastPage, totalPages);
+    (
+      _event,
+      idOrPath: string,
+      lastPage: number,
+      totalPages?: number,
+      lastScrollRatio?: number,
+      lastByteOffset?: number,
+    ) => {
+      return store.updateProgress(
+        idOrPath,
+        lastPage,
+        totalPages,
+        lastScrollRatio,
+        lastByteOffset,
+      );
     },
   );
 
@@ -344,8 +390,53 @@ function registerIpc(): void {
 
 configurePortableUserData();
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   store = new AppStore(app.getPath('userData'));
+
+  // Headless resume check: ABR_E2E_TXT_RESUME=<path> ABR_E2E_TXT_OFFSET=<bytes>
+  const e2ePath = process.env.ABR_E2E_TXT_RESUME;
+  if (e2ePath) {
+    const filePath = path.resolve(e2ePath);
+    const offset = Number(process.env.ABR_E2E_TXT_OFFSET || '13723349');
+    const ratio = Number(process.env.ABR_E2E_TXT_RATIO || '0.4885');
+    if (!fs.existsSync(filePath)) {
+      console.error('E2E FAIL: file not found', filePath);
+      app.exit(1);
+      return;
+    }
+    const stat = fs.statSync(filePath);
+    const id = buildBookId({
+      path: filePath,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+    });
+    store.upsertRecent({ id, path: filePath, format: 'txt', title: getBookTitle(filePath) });
+    store.updateProgress(id, 1, 1, ratio, offset);
+    const result = await openBookFromPath(filePath);
+    const windowStart = result?.textWindowStart ?? -1;
+    const preview = (result?.textContent ?? '').slice(0, 60).replace(/\s+/g, ' ');
+    const ok =
+      Boolean(result) &&
+      result!.format === 'txt' &&
+      (result!.lastPage ?? 0) > 1 &&
+      (result!.totalPages ?? 0) > 100 &&
+      windowStart > 1_000_000 &&
+      Math.abs(windowStart - offset) < 16_384;
+    console.log(
+      JSON.stringify({
+        ok,
+        offset,
+        windowStart,
+        lastPage: result?.lastPage,
+        totalPages: result?.totalPages,
+        preview,
+      }),
+    );
+    clearTxtSession();
+    app.exit(ok ? 0 : 1);
+    return;
+  }
+
   registerIpc();
   createMenu();
   createWindow();

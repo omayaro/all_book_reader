@@ -1,5 +1,14 @@
 import type { AppSettings, AppState, OpenBookResult } from './types';
 
+export interface TxtPageResult {
+  text: string;
+  page: number;
+  totalPages: number;
+  startByte: number;
+  endByte: number;
+  byteLength: number;
+}
+
 export interface ElectronApi {
   getState: () => Promise<AppState>;
   openFileDialog: () => Promise<OpenBookResult | null>;
@@ -7,10 +16,13 @@ export interface ElectronApi {
   openPath: (filePath: string) => Promise<OpenBookResult | null>;
   closeBook: () => Promise<void>;
   readComicPage: (index: number) => Promise<ArrayBuffer>;
+  readTxtPage: (page: number) => Promise<TxtPageResult>;
   updateProgress: (
     idOrPath: string,
     lastPage: number,
     totalPages?: number,
+    lastScrollRatio?: number,
+    lastByteOffset?: number,
   ) => Promise<AppState['recentBooks']>;
   removeRecent: (idOrPath: string) => Promise<AppState['recentBooks']>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>;

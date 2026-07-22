@@ -1,7 +1,10 @@
 import { getExtension } from './format';
 import { spreadStartPage } from './pageMode';
+import type { FitMode, PageMode } from '../types';
 
 export type ReadingDirection = 'ltr' | 'rtl';
+
+const TWO_PAGE_GAP_PX = 12;
 
 const IMAGE_EXTENSIONS = new Set([
   '.jpg',
@@ -78,4 +81,35 @@ export function arrowKeyPageDelta(
     return key === 'ArrowRight' ? 1 : -1;
   }
   return key === 'ArrowLeft' ? 1 : -1;
+}
+
+/**
+ * Pixel size for a comic page inside the reader viewport.
+ * Sizes against the container (not vw/%) so 1/2-page layouts stay centered and visible.
+ */
+export function comicImageDisplaySize(
+  naturalWidth: number,
+  naturalHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  pageMode: PageMode,
+  fitMode: FitMode,
+  zoom: number,
+): { width: number; height: number } {
+  if (naturalWidth <= 0 || naturalHeight <= 0) {
+    return { width: 0, height: 0 };
+  }
+  const split = pageMode === 'two' ? 2 : 1;
+  const gap = pageMode === 'two' ? TWO_PAGE_GAP_PX : 0;
+  const availableWidth = Math.max(40, (viewportWidth - gap) / split);
+  const availableHeight = Math.max(40, viewportHeight);
+  const widthScale = availableWidth / naturalWidth;
+  const heightScale = availableHeight / naturalHeight;
+  const fitScale = fitMode === 'fit-page' ? Math.min(widthScale, heightScale) : widthScale;
+  const scale = fitScale * zoom;
+  // Floor — rounding up can flip overflow:auto scrollbar on/off at the fit edge.
+  return {
+    width: Math.max(1, Math.floor(naturalWidth * scale)),
+    height: Math.max(1, Math.floor(naturalHeight * scale)),
+  };
 }

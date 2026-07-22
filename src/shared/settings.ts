@@ -3,7 +3,7 @@ import type { AppSettings, FitMode, PageMode, ThemeSetting } from '../types';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   pageMode: 'single',
-  fitMode: 'fit-width',
+  fitMode: 'fit-page',
   zoom: 1,
   fontSize: 18,
   theme: 'light',
@@ -12,14 +12,22 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxRecent: 20,
 };
 
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 3;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
 const MIN_FONT = 12;
 const MAX_FONT = 40;
 
 export function clampZoom(zoom: number): number {
   if (Number.isNaN(zoom)) return DEFAULT_SETTINGS.zoom;
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(zoom.toFixed(2))));
+}
+
+export function zoomAtMin(zoom: number): boolean {
+  return clampZoom(zoom) <= MIN_ZOOM;
+}
+
+export function zoomAtMax(zoom: number): boolean {
+  return clampZoom(zoom) >= MAX_ZOOM;
 }
 
 export function clampFontSize(size: number): number {

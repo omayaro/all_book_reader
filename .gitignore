@@ -5,3 +5,7 @@ release
 *.log
 .DS_Store
 data
+.cursor/
+# Large local TXT fixtures for resume E2E (not shipped)
+samples/TestFile.txt
+samples/*.local.txt

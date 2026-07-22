@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react';
-import { getApi } from '../api';
-import { comicSpreadPages, type ReadingDirection } from '../shared/comic';
+import { useEffect, useRef, useState } from 'react';
+import {
+  clearComicPageCache,
+  getComicPageImage,
+  retainComicPages,
+  type ComicPageImage,
+} from '../comicPageCache';
+import { comicImageDisplaySize, comicSpreadPages, type ReadingDirection } from '../shared/comic';
+import { comicPrefetchPages } from '../shared/comicPrefetch';
+import { measureReaderStage, stabilizeViewportSize } from '../readerViewport';
+import { useReaderDragPan } from '../useReaderDragPan';
 import type { FitMode, PageMode } from '../types';
 
 interface ComicViewerProps {
@@ -22,16 +30,41 @@ export function ComicViewer({
   readingDirection,
   onPageMeta,
 }: ComicViewerProps) {
-  const [leftUrl, setLeftUrl] = useState<string | null>(null);
-  const [rightUrl, setRightUrl] = useState<string | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [leftPage, setLeftPage] = useState<ComicPageImage | null>(null);
+  const [rightPage, setRightPage] = useState<ComicPageImage | null>(null);
+  const [viewport, setViewport] = useState({ width: 800, height: 600 });
+  useReaderDragPan(hostRef);
 
   useEffect(() => {
     onPageMeta(totalPages);
   }, [totalPages, onPageMeta]);
 
   useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const stage = el.closest('.reader-stage');
+    if (!(stage instanceof HTMLElement)) return;
+
+    const update = () => {
+      const measured = measureReaderStage(el);
+      const borderX = pageMode === 'two' ? 24 : 12;
+      const borderY = 12;
+      const next = {
+        width: Math.max(40, measured.width - borderX),
+        height: Math.max(40, measured.height - borderY),
+      };
+      setViewport((prev) => stabilizeViewportSize(prev, next));
+    };
+    update();
+    // border-box: ignore content-box shrink when overflow scrollbars appear.
+    const ro = new ResizeObserver(update);
+    ro.observe(stage, { box: 'border-box' });
+    return () => ro.disconnect();
+  }, [pageMode]);
+
+  useEffect(() => {
     let cancelled = false;
-    const urls: string[] = [];
 
     const load = async () => {
       const pair =
@@ -39,67 +72,94 @@ export function ComicViewer({
           ? comicSpreadPages(page, totalPages, readingDirection)
           : { left: page, right: null as number | null };
 
-      const loadOne = async (pageNumber: number | null): Promise<string | null> => {
-        if (pageNumber == null) return null;
-        const buffer = await getApi().readComicPage(pageNumber - 1);
-        const blob = new Blob([new Uint8Array(buffer)]);
-        const url = URL.createObjectURL(blob);
-        urls.push(url);
-        return url;
-      };
-
-      const nextLeft = await loadOne(pair.left);
-      const nextRight = await loadOne(pair.right);
-      if (cancelled) {
-        for (const url of urls) URL.revokeObjectURL(url);
+      try {
+        const [nextLeft, nextRight] = await Promise.all([
+          pair.left != null ? getComicPageImage(pair.left) : Promise.resolve(null),
+          pair.right != null ? getComicPageImage(pair.right) : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        setLeftPage(nextLeft);
+        setRightPage(nextRight);
+      } catch {
+        if (!cancelled) {
+          setLeftPage(null);
+          setRightPage(null);
+        }
         return;
       }
-      setLeftUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return nextLeft;
-      });
-      setRightUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return nextRight;
+
+      const keep = comicPrefetchPages(page, totalPages, pageMode);
+      void Promise.all(keep.map((p) => getComicPageImage(p).catch(() => null))).then(() => {
+        if (!cancelled) retainComicPages(keep);
       });
     };
 
-    void load().catch(() => {
-      if (!cancelled) {
-        setLeftUrl(null);
-        setRightUrl(null);
-      }
-    });
-
+    void load();
     return () => {
       cancelled = true;
-      for (const url of urls) URL.revokeObjectURL(url);
     };
   }, [page, pageMode, totalPages, readingDirection]);
+
+  useEffect(() => {
+    return () => clearComicPageCache();
+  }, []);
 
   useEffect(() => {
     document.querySelector('.reader-stage')?.scrollTo({ top: 0, left: 0 });
   }, [zoom, page, pageMode]);
 
-  const objectFit = fitMode === 'fit-page' ? 'contain' : 'contain';
-  const widthStyle =
-    pageMode === 'two'
-      ? `min(48%, ${Math.round(46 * zoom)}vw)`
-      : `min(100%, ${Math.round(90 * zoom)}vw)`;
+  const leftSize =
+    leftPage &&
+    comicImageDisplaySize(
+      leftPage.naturalWidth,
+      leftPage.naturalHeight,
+      viewport.width,
+      viewport.height,
+      pageMode,
+      fitMode,
+      zoom,
+    );
+  const rightSize =
+    rightPage &&
+    comicImageDisplaySize(
+      rightPage.naturalWidth,
+      rightPage.naturalHeight,
+      viewport.width,
+      viewport.height,
+      pageMode,
+      fitMode,
+      zoom,
+    );
 
   return (
-    <div className={`comic-viewer${pageMode === 'two' ? ' two' : ''}`}>
-      {leftUrl ? (
-        <img src={leftUrl} alt={`Page ${page}`} style={{ width: widthStyle, objectFit }} />
-      ) : (
-        <div className="comic-placeholder" />
-      )}
-      {pageMode === 'two' &&
-        (rightUrl ? (
-          <img src={rightUrl} alt="Page spread" style={{ width: widthStyle, objectFit }} />
+    <div ref={hostRef} className="comic-viewer-host">
+      <div className={`comic-viewer${pageMode === 'two' ? ' two' : ''}`}>
+        {leftPage && leftSize ? (
+          <img
+            src={leftPage.url}
+            alt={`Page ${page}`}
+            width={leftSize.width}
+            height={leftSize.height}
+            style={{ width: leftSize.width, height: leftSize.height }}
+            draggable={false}
+          />
         ) : (
           <div className="comic-placeholder" />
-        ))}
+        )}
+        {pageMode === 'two' &&
+          (rightPage && rightSize ? (
+            <img
+              src={rightPage.url}
+              alt="Page spread"
+              width={rightSize.width}
+              height={rightSize.height}
+              style={{ width: rightSize.width, height: rightSize.height }}
+              draggable={false}
+            />
+          ) : (
+            <div className="comic-placeholder" />
+          ))}
+      </div>
     </div>
   );
 }

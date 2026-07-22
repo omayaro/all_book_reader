@@ -5,7 +5,9 @@ import { TxtViewer } from './components/TxtViewer';
 import { PdfViewer } from './components/PdfViewer';
 import { EpubViewer } from './components/EpubViewer';
 import { ComicViewer } from './components/ComicViewer';
-import { clampFontSize, clampZoom, isThemeSetting, mergeSettings } from './shared/settings';
+import { PagePreviewStrip } from './components/PagePreviewStrip';
+import { clampFontSize, clampZoom, isThemeSetting, mergeSettings, zoomAtMax, zoomAtMin } from './shared/settings';
+import { clampScrollRatio } from './shared/recent';
 import { nextTheme, resolveTheme } from './shared/theme';
 import { isSupportedBookFile } from './shared/format';
 import {
@@ -45,6 +47,7 @@ export default function App() {
   const [searchDirection, setSearchDirection] = useState<'next' | 'prev' | null>(null);
   const [searchNonce, setSearchNonce] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const txtProgressRef = useRef({ ratio: 0, byteOffset: 0 });
   const readerStageRef = useRef<HTMLDivElement>(null);
   const resolvedTheme = resolveTheme(settings.theme);
 
@@ -63,22 +66,48 @@ export default function App() {
   const openResult = useCallback((result: OpenBookResult | null) => {
     if (!result) return;
     const startPage = result.lastPage || 1;
+    if (result.format === 'txt') {
+      txtProgressRef.current = {
+        ratio: clampScrollRatio(result.lastScrollRatio ?? 0),
+        byteOffset: Math.max(0, Math.floor(result.lastByteOffset ?? 0)),
+      };
+    }
     setBook(result);
     setPage(startPage);
     setPageInput(String(startPage));
     setStatus(`Opened ${result.title}`);
-    void refreshState();
-  }, [refreshState]);
+    void (async () => {
+      await refreshState();
+      // After load, force height-aware fit for PDF/comics (Fit Page @ zoom 1).
+      if (result.format === 'pdf' || result.format === 'comic') {
+        await persistSettings({ fitMode: 'fit-page', zoom: 1 });
+      }
+    })();
+  }, [refreshState, persistSettings]);
+
+  const flushTxtProgress = useCallback(async () => {
+    if (!book || book.format !== 'txt') return;
+    const { ratio, byteOffset } = txtProgressRef.current;
+    await getApi().updateProgress(
+      book.id,
+      page,
+      book.totalPages,
+      clampScrollRatio(ratio),
+      byteOffset,
+    );
+  }, [book, page]);
 
   const openDialog = useCallback(async () => {
+    await flushTxtProgress();
     const result = await getApi().openFileDialog();
     openResult(result);
-  }, [openResult]);
+  }, [openResult, flushTxtProgress]);
 
   const openFolderDialog = useCallback(async () => {
+    await flushTxtProgress();
     const result = await getApi().openFolderDialog();
     openResult(result);
-  }, [openResult]);
+  }, [openResult, flushTxtProgress]);
 
   const openPath = useCallback(
     async (filePath: string) => {
@@ -88,25 +117,76 @@ export default function App() {
         setStatus('Only .txt, .pdf, .epub, .zip, and .cbz files are supported.');
         return;
       }
+      await flushTxtProgress();
       const result = await getApi().openPath(filePath);
       openResult(result);
     },
-    [openResult],
+    [openResult, flushTxtProgress],
   );
 
   const closeBook = useCallback(async () => {
     if (book) {
-      await getApi().updateProgress(book.id, page, book.totalPages);
+      if (book.format === 'txt') {
+        await flushTxtProgress();
+      } else {
+        await getApi().updateProgress(book.id, page, book.totalPages);
+      }
     }
     await getApi().closeBook();
     setBook(null);
     setStatus('Ready');
     await refreshState();
-  }, [book, page, refreshState]);
+  }, [book, page, refreshState, flushTxtProgress]);
+
+  const applyTxtPage = useCallback(
+    (nextPage: number, totalPages: number, startByte: number, text: string, byteLength: number) => {
+      const ratio = byteLength > 0 ? startByte / byteLength : 0;
+      txtProgressRef.current = { ratio, byteOffset: startByte };
+      setPage(nextPage);
+      setPageInput(String(nextPage));
+      setBook((current) =>
+        current
+          ? {
+              ...current,
+              lastPage: nextPage,
+              totalPages,
+              textContent: text,
+              textWindowStart: startByte,
+              lastByteOffset: startByte,
+              lastScrollRatio: clampScrollRatio(ratio),
+            }
+          : current,
+      );
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        if (!book) return;
+        void getApi()
+          .updateProgress(book.id, nextPage, totalPages, clampScrollRatio(ratio), startByte)
+          .then(setRecentBooks);
+      }, 200);
+    },
+    [book],
+  );
 
   const scheduleProgressSave = useCallback(
     (nextPage: number, totalPages: number) => {
       if (!book) return;
+      if (book.format === 'txt') {
+        void getApi()
+          .readTxtPage(nextPage)
+          .then((result) => {
+            applyTxtPage(
+              result.page,
+              result.totalPages,
+              result.startByte,
+              result.text,
+              result.byteLength,
+            );
+            readerStageRef.current?.scrollTo({ top: 0 });
+          })
+          .catch(() => setStatus('Failed to load text page.'));
+        return;
+      }
       setPage(nextPage);
       setPageInput(String(nextPage));
       setBook((current) =>
@@ -119,21 +199,29 @@ export default function App() {
           .then(setRecentBooks);
       }, 300);
     },
-    [book],
+    [book, applyTxtPage],
   );
 
   const zoomBy = useCallback(
     (delta: number) => {
       if (!book) return;
       if (book.format === 'pdf' || book.format === 'comic') {
-        void persistSettings({ zoom: clampZoom(settings.zoom + delta) });
+        setSettings((prev) => {
+          const nextZoom = clampZoom(prev.zoom + delta);
+          if (nextZoom === prev.zoom) return prev;
+          void getApi().saveSettings({ zoom: nextZoom }).then(setSettings);
+          return { ...prev, zoom: nextZoom };
+        });
         return;
       }
-      void persistSettings({
-        fontSize: clampFontSize(settings.fontSize + (delta > 0 ? 2 : -2)),
+      setSettings((prev) => {
+        const nextFont = clampFontSize(prev.fontSize + (delta > 0 ? 2 : -2));
+        if (nextFont === prev.fontSize) return prev;
+        void getApi().saveSettings({ fontSize: nextFont }).then(setSettings);
+        return { ...prev, fontSize: nextFont };
       });
     },
-    [book, persistSettings, settings.zoom, settings.fontSize],
+    [book],
   );
 
   const focusReader = useCallback(() => {
@@ -213,22 +301,16 @@ export default function App() {
           void persistSettings({ theme: nextTheme(settings.theme) });
           break;
         case 'menu:zoom':
-          // Same behavior as toolbar +/- (PDF/comic zoom, TXT/EPUB font size).
-          if (book) {
-            const delta = payload === 'in' ? 0.1 : -0.1;
-            if (book.format === 'pdf' || book.format === 'comic') {
-              void persistSettings({ zoom: clampZoom(settings.zoom + delta) });
-            } else {
-              void persistSettings({
-                fontSize: clampFontSize(settings.fontSize + (delta > 0 ? 2 : -2)),
-              });
-            }
-          }
+          zoomBy(payload === 'in' ? 0.1 : -0.1);
           break;
         case 'menu:fontSize':
-          void persistSettings({
-            fontSize: clampFontSize(settings.fontSize + (payload === 'in' ? 2 : -2)),
-          });
+          if (book && book.format !== 'pdf' && book.format !== 'comic') {
+            zoomBy(payload === 'in' ? 0.1 : -0.1);
+          } else {
+            void persistSettings({
+              fontSize: clampFontSize(settings.fontSize + (payload === 'in' ? 2 : -2)),
+            });
+          }
           break;
         default:
           break;
@@ -240,8 +322,8 @@ export default function App() {
     closeBook,
     persistSettings,
     book,
+    zoomBy,
     settings.theme,
-    settings.zoom,
     settings.fontSize,
     settings.toolbarVisible,
   ]);
@@ -276,13 +358,16 @@ export default function App() {
 
   useEffect(() => {
     const flush = () => {
-      if (book) {
-        void getApi().updateProgress(book.id, page, book.totalPages);
+      if (!book) return;
+      if (book.format === 'txt') {
+        void flushTxtProgress();
+        return;
       }
+      void getApi().updateProgress(book.id, page, book.totalPages);
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
-  }, [book, page]);
+  }, [book, page, flushTxtProgress]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -352,9 +437,9 @@ export default function App() {
 
   return (
     <div
-      className={`app${dragging ? ' dragging' : ''}${settings.toolbarVisible ? '' : ' toolbar-hidden'}`}
+      className={`app${dragging ? ' dragging' : ''}${!book || !settings.toolbarVisible ? ' toolbar-hidden' : ''}`}
     >
-      {settings.toolbarVisible && (
+      {book && settings.toolbarVisible && (
       <div className="toolbar">
         <label className="toolbar-pin" title="Uncheck to hide the options toolbar">
           <input
@@ -413,10 +498,20 @@ export default function App() {
             {settings.readingDirection === 'rtl' ? 'RTL (←)' : 'LTR (→)'}
           </button>
         )}
-        <button type="button" disabled={!book} onClick={() => zoomBy(-0.1)} title="Zoom out (-)">
+        <button
+          type="button"
+          disabled={!book || ((book.format === 'pdf' || book.format === 'comic') && zoomAtMin(settings.zoom))}
+          onClick={() => zoomBy(-0.1)}
+          title="Zoom out (-)"
+        >
           −
         </button>
-        <button type="button" disabled={!book} onClick={() => zoomBy(0.1)} title="Zoom in (+)">
+        <button
+          type="button"
+          disabled={!book || ((book.format === 'pdf' || book.format === 'comic') && zoomAtMax(settings.zoom))}
+          onClick={() => zoomBy(0.1)}
+          title="Zoom in (+)"
+        >
           +
         </button>
         <button type="button" disabled={!book} onClick={() => movePage(-1)} title="Page Up">
@@ -527,13 +622,17 @@ export default function App() {
           >
             {book.format === 'txt' && book.textContent != null && (
               <TxtViewer
+                bookId={book.id}
                 text={book.textContent}
+                page={page}
+                totalPages={book.totalPages}
                 fontSize={settings.fontSize}
                 pageMode={settings.pageMode}
                 searchQuery={searchQuery}
                 searchDirection={searchDirection}
                 searchNonce={searchNonce}
                 onSearchDone={setStatus}
+                onPageChange={applyTxtPage}
               />
             )}
             {book.format === 'pdf' && book.fileData && (
@@ -579,6 +678,23 @@ export default function App() {
               />
             )}
           </div>
+          {(book.format === 'pdf' || book.format === 'comic' || book.format === 'txt') &&
+            book.totalPages > 0 && (
+            <PagePreviewStrip
+              format={book.format}
+              bookId={book.id}
+              totalPages={book.totalPages}
+              page={page}
+              pageMode={settings.pageMode}
+              readingDirection={settings.readingDirection}
+              pdfData={book.format === 'pdf' ? book.fileData : undefined}
+              onSelectPage={(next) => {
+                scheduleProgressSave(next, book.totalPages);
+                setStatus(`Jumped to page ${next}`);
+                focusReader();
+              }}
+            />
+          )}
         </div>
       )}
     </div>

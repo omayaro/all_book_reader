@@ -3,8 +3,9 @@ import { clampFontSize, clampZoom, mergeSettings } from './settings';
 
 describe('settings', () => {
   it('clamps zoom and font size', () => {
-    expect(clampZoom(0.1)).toBe(0.5);
-    expect(clampZoom(9)).toBe(3);
+    expect(clampZoom(0.05)).toBe(0.25);
+    expect(clampZoom(0.25)).toBe(0.25);
+    expect(clampZoom(9)).toBe(4);
     expect(clampFontSize(5)).toBe(12);
     expect(clampFontSize(99)).toBe(40);
   });
@@ -14,7 +15,7 @@ describe('settings', () => {
     expect(merged.theme).toBe('dark');
     expect(merged.zoom).toBe(1.5);
     expect(merged.pageMode).toBe('two');
-    expect(merged.fitMode).toBe('fit-width');
+    expect(merged.fitMode).toBe('fit-page');
     expect(merged.maxRecent).toBe(20);
     expect(merged.readingDirection).toBe('ltr');
     expect(merged.toolbarVisible).toBe(true);

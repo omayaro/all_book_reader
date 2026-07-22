@@ -17,6 +17,10 @@ export interface RecentBook {
   totalPages: number;
   format: BookFormat;
   missing: boolean;
+  /** 0–1 scroll position for continuous TXT reading. */
+  lastScrollRatio?: number;
+  /** Absolute byte offset for TXT resume (preferred over ratio). */
+  lastByteOffset?: number;
 }
 
 export interface AppSettings {
@@ -44,7 +48,16 @@ export interface OpenBookResult {
   lastPage: number;
   totalPages: number;
   textContent?: string;
+  textByteLength?: number;
+  /** Start byte of the currently displayed TXT page. */
+  textWindowStart?: number;
+  /** End byte (exclusive) of the currently displayed TXT page. */
+  textPosition?: number;
   fileData?: ArrayBuffer;
   /** Present when format is comic (ZIP/CBZ). Pages loaded via readComicPage. */
   comicPageCount?: number;
+  /** 0–1 scroll resume point for TXT. */
+  lastScrollRatio?: number;
+  /** Absolute byte offset resume point for TXT. */
+  lastByteOffset?: number;
 }
