@@ -1,6 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { AppSettings, AppState, OpenBookResult } from '../src/types';
 
+export interface TxtPageResult {
+  text: string;
+  page: number;
+  totalPages: number;
+  startByte: number;
+  endByte: number;
+  byteLength: number;
+}
+
 export interface ElectronApi {
   getState: () => Promise<AppState>;
   openFileDialog: () => Promise<OpenBookResult | null>;
@@ -8,10 +17,13 @@ export interface ElectronApi {
   openPath: (filePath: string) => Promise<OpenBookResult | null>;
   closeBook: () => Promise<void>;
   readComicPage: (index: number) => Promise<ArrayBuffer>;
+  readTxtPage: (page: number) => Promise<TxtPageResult>;
   updateProgress: (
     idOrPath: string,
     lastPage: number,
     totalPages?: number,
+    lastScrollRatio?: number,
+    lastByteOffset?: number,
   ) => Promise<AppState['recentBooks']>;
   removeRecent: (idOrPath: string) => Promise<AppState['recentBooks']>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>;
@@ -26,8 +38,16 @@ const api: ElectronApi = {
   openPath: (filePath: string) => ipcRenderer.invoke('books:openPath', filePath),
   closeBook: () => ipcRenderer.invoke('books:close'),
   readComicPage: (index: number) => ipcRenderer.invoke('comic:readPage', index),
-  updateProgress: (idOrPath, lastPage, totalPages) =>
-    ipcRenderer.invoke('books:updateProgress', idOrPath, lastPage, totalPages),
+  readTxtPage: (page) => ipcRenderer.invoke('txt:readPage', page),
+  updateProgress: (idOrPath, lastPage, totalPages, lastScrollRatio, lastByteOffset) =>
+    ipcRenderer.invoke(
+      'books:updateProgress',
+      idOrPath,
+      lastPage,
+      totalPages,
+      lastScrollRatio,
+      lastByteOffset,
+    ),
   removeRecent: (idOrPath) => ipcRenderer.invoke('books:removeRecent', idOrPath),
   saveSettings: (partial) => ipcRenderer.invoke('books:saveSettings', partial),
   getPathForFile: (file: File) => {

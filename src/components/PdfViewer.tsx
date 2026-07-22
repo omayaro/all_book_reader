@@ -3,6 +3,8 @@ import * as pdfjs from 'pdfjs-dist';
 import type { FitMode, PageMode } from '../types';
 import { clampPage, spreadPages } from '../shared/pageMode';
 import { findNextPageMatch, findPrevPageMatch } from '../shared/search';
+import { measureReaderStage, stabilizeViewportSize } from '../readerViewport';
+import { useReaderDragPan } from '../useReaderDragPan';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -39,7 +41,9 @@ export function PdfViewer({
   const rightCanvasRef = useRef<HTMLCanvasElement>(null);
   const [doc, setDoc] = useState<pdfjs.PDFDocumentProxy | null>(null);
   const [totalPages, setTotalPages] = useState(1);
+  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const pageTextsRef = useRef<string[]>([]);
+  useReaderDragPan(containerRef);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +69,22 @@ export function PdfViewer({
   }, [data]);
 
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const stage = el.closest('.reader-stage');
+    if (!(stage instanceof HTMLElement)) return;
+    const update = () => {
+      const measured = measureReaderStage(el);
+      setStageSize((prev) => stabilizeViewportSize(prev, measured));
+    };
+    update();
+    // border-box: ignore content-box shrink when overflow scrollbars appear.
+    const ro = new ResizeObserver(update);
+    ro.observe(stage, { box: 'border-box' });
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (!doc || !leftCanvasRef.current) return;
     let cancelled = false;
 
@@ -75,21 +95,22 @@ export function PdfViewer({
           ? spreadPages(current, totalPages)
           : { left: current, right: null as number | null };
 
-      await drawPage(doc, pair.left, leftCanvasRef.current!, containerRef.current, fitMode, zoom, pageMode === 'two');
+      const borderX = pageMode === 'two' ? 24 : 12;
+      const borderY = 12;
+      const area = {
+        width: Math.max(40, stageSize.width - borderX),
+        height: Math.max(40, stageSize.height - borderY),
+      };
+
+      await drawPage(doc, pair.left, leftCanvasRef.current!, area, fitMode, zoom, pageMode === 'two');
       if (cancelled) return;
-      if (pair.right && rightCanvasRef.current) {
+      if (pageMode === 'two' && pair.right && rightCanvasRef.current) {
         rightCanvasRef.current.style.display = 'block';
-        await drawPage(
-          doc,
-          pair.right,
-          rightCanvasRef.current,
-          containerRef.current,
-          fitMode,
-          zoom,
-          true,
-        );
+        await drawPage(doc, pair.right, rightCanvasRef.current, area, fitMode, zoom, true);
       } else if (rightCanvasRef.current) {
         rightCanvasRef.current.style.display = 'none';
+        rightCanvasRef.current.width = 0;
+        rightCanvasRef.current.height = 0;
       }
     };
 
@@ -97,7 +118,7 @@ export function PdfViewer({
     return () => {
       cancelled = true;
     };
-  }, [doc, page, pageMode, fitMode, zoom, totalPages]);
+  }, [doc, page, pageMode, fitMode, zoom, totalPages, stageSize]);
 
   useEffect(() => {
     containerRef.current
@@ -122,7 +143,7 @@ export function PdfViewer({
   return (
     <div className="pdf-viewer" ref={containerRef}>
       <canvas ref={leftCanvasRef} />
-      <canvas ref={rightCanvasRef} />
+      {pageMode === 'two' ? <canvas ref={rightCanvasRef} /> : null}
     </div>
   );
 }
@@ -131,19 +152,21 @@ async function drawPage(
   doc: pdfjs.PDFDocumentProxy,
   pageNumber: number,
   canvas: HTMLCanvasElement,
-  container: HTMLDivElement | null,
+  area: { width: number; height: number },
   fitMode: FitMode,
   zoom: number,
   split: boolean,
 ): Promise<void> {
   const pdfPage = await doc.getPage(pageNumber);
   const base = pdfPage.getViewport({ scale: 1 });
-  const availableWidth = Math.max(320, (container?.clientWidth ?? 800) / (split ? 2.1 : 1.05));
-  const availableHeight = Math.max(320, (container?.clientHeight ?? 600) - 24);
+  const gap = split ? 12 : 0;
+  const availableWidth = Math.max(40, (area.width - gap) / (split ? 2 : 1));
+  const availableHeight = Math.max(40, area.height);
   const widthScale = availableWidth / base.width;
   const heightScale = availableHeight / base.height;
   const fitScale = fitMode === 'fit-page' ? Math.min(widthScale, heightScale) : widthScale;
-  const viewport = pdfPage.getViewport({ scale: fitScale * zoom });
+  // Floor scale slightly so canvas pixels don't toggle scrollbar at the fit edge.
+  const viewport = pdfPage.getViewport({ scale: Math.max(0.01, fitScale * zoom * 0.999) });
   const context = canvas.getContext('2d');
   if (!context) return;
   canvas.width = viewport.width;

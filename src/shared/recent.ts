@@ -7,6 +7,8 @@ export interface UpsertRecentInput {
   format: BookFormat;
   lastPage?: number;
   totalPages?: number;
+  lastScrollRatio?: number;
+  lastByteOffset?: number;
   title?: string;
   lastOpenedAt?: string;
   missing?: boolean;
@@ -28,10 +30,23 @@ export function upsertRecentBook(
     totalPages: input.totalPages ?? existing?.totalPages ?? 1,
     format: input.format,
     missing: input.missing ?? false,
+    lastScrollRatio:
+      typeof input.lastScrollRatio === 'number'
+        ? clampScrollRatio(input.lastScrollRatio)
+        : existing?.lastScrollRatio,
+    lastByteOffset:
+      typeof input.lastByteOffset === 'number'
+        ? Math.max(0, Math.floor(input.lastByteOffset))
+        : existing?.lastByteOffset,
   };
 
   const filtered = list.filter((b) => b.id !== next.id && b.path !== next.path);
   return [next, ...filtered].slice(0, Math.max(1, maxRecent));
+}
+
+export function clampScrollRatio(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, Number(value.toFixed(4))));
 }
 
 export function updateRecentProgress(
@@ -39,6 +54,8 @@ export function updateRecentProgress(
   idOrPath: string,
   lastPage: number,
   totalPages?: number,
+  lastScrollRatio?: number,
+  lastByteOffset?: number,
 ): RecentBook[] {
   return list.map((book) => {
     if (book.id !== idOrPath && book.path !== idOrPath) return book;
@@ -46,6 +63,14 @@ export function updateRecentProgress(
       ...book,
       lastPage,
       totalPages: totalPages ?? book.totalPages,
+      lastScrollRatio:
+        typeof lastScrollRatio === 'number'
+          ? clampScrollRatio(lastScrollRatio)
+          : book.lastScrollRatio,
+      lastByteOffset:
+        typeof lastByteOffset === 'number'
+          ? Math.max(0, Math.floor(lastByteOffset))
+          : book.lastByteOffset,
       lastOpenedAt: new Date().toISOString(),
       missing: false,
     };

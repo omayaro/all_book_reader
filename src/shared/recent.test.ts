@@ -17,6 +17,8 @@ function book(partial: Partial<RecentBook> & Pick<RecentBook, 'id' | 'path'>): R
     missing: partial.missing ?? false,
     id: partial.id,
     path: partial.path,
+    lastScrollRatio: partial.lastScrollRatio,
+    lastByteOffset: partial.lastByteOffset,
   };
 }
 
@@ -39,10 +41,19 @@ describe('recent', () => {
       book({ id: 'a', path: 'C:\\a.pdf', lastPage: 1 }),
       book({ id: 'b', path: 'C:\\b.pdf' }),
     ];
-    const updated = updateRecentProgress(list, 'a', 5, 12);
+    const updated = updateRecentProgress(list, 'a', 5, 12, 0.42, 12_345);
     expect(updated[0]?.lastPage).toBe(5);
     expect(updated[0]?.totalPages).toBe(12);
+    expect(updated[0]?.lastScrollRatio).toBe(0.42);
+    expect(updated[0]?.lastByteOffset).toBe(12_345);
     expect(removeRecentBook(updated, 'b')).toHaveLength(1);
+  });
+
+  it('preserves byte offset when only ratio is updated', () => {
+    const list = [book({ id: 't', path: 'C:\\t.txt', format: 'txt', lastByteOffset: 9000 })];
+    const updated = updateRecentProgress(list, 't', 1, 1, 0.5);
+    expect(updated[0]?.lastScrollRatio).toBe(0.5);
+    expect(updated[0]?.lastByteOffset).toBe(9000);
   });
 
   it('marks missing books', () => {

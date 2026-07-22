@@ -55,12 +55,20 @@ export class AppStore {
     return [...this.state.recentBooks];
   }
 
-  updateProgress(idOrPath: string, lastPage: number, totalPages?: number): RecentBook[] {
+  updateProgress(
+    idOrPath: string,
+    lastPage: number,
+    totalPages?: number,
+    lastScrollRatio?: number,
+    lastByteOffset?: number,
+  ): RecentBook[] {
     this.state.recentBooks = updateRecentProgress(
       this.state.recentBooks,
       idOrPath,
       lastPage,
       totalPages,
+      lastScrollRatio,
+      lastByteOffset,
     );
     this.persist();
     return [...this.state.recentBooks];

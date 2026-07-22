@@ -10,14 +10,32 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 
 ## Features
 
+### Opening & library
 - Open books via **File → Open**, toolbar **Open**, or **drag and drop**
 - **Comics:** `.zip` / `.cbz` (images inside) or an **image folder** (File → Open Folder)
-- **Single / Two pages** view (PDF/comic spread; TXT/EPUB two-column)
+- **Recent books** (up to 20) with Missing badge and Remove
+- **Home (file list):** options toolbar is **hidden automatically**; it returns when a book is open (respects Pin)
+
+### Reading modes
+- **Single / Two pages** (PDF/comic spread; TXT/EPUB two-column)
 - Comic **LTR / RTL** reading direction (RTL: page 1 on the right)
 - PDF/comic **Fit Width / Fit Page** and zoom
-- TXT/EPUB font size via zoom controls
-- **Resume reading** at the last page
-- **Recent books** (up to 20) with Missing badge and Remove
+- Opening a PDF or comic forces **Fit Page @ zoom 1** (height-aware default)
+- TXT/EPUB **font size** via zoom / font shortcuts
+
+### PDF & comics
+- **Right-hand page preview strip** (PDF + comic only; not TXT/EPUB)
+- Comic **prefetch** of nearby pages to reduce turn delay
+- **Click-drag pan** when zoomed in (left mouse button) on comic images and PDF
+- Zoom/layout sizing uses a stable viewport measure to avoid fit-edge **jitter** (scrollbar feedback)
+
+### TXT (fixed pages)
+- Large TXT files use **fixed ~8 KiB pages** (newline-aligned), not endless scroll
+- Same **Page Up/Down / page jump** controls as PDF
+- **Resume** stores last page + page-start byte offset (reopen lands on the same region)
+- In-page search can walk forward/backward across pages
+
+### General
 - **Theme** dropdown: Light / Dark (**Ctrl+D** toggles)
 - In-book **search**
 - English UI and menus (**Help → About** popup: **Ctrl+Shift+A**)
@@ -32,6 +50,7 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 | Larger / smaller font | **Ctrl+Plus** / **Ctrl+-** |
 | Next / previous page | **PageDown** / **PageUp**; arrows **→/←** (LTR) or **←/→** (RTL comics) |
 | Go to page | Digits in **Page**, then **Enter** or **Go** (focus returns to reader) |
+| Pan zoomed image/PDF | **Left-click drag** |
 | Single / two pages | **Ctrl+1** / **Ctrl+2** |
 | Fit width / fit page | **Ctrl+3** / **Ctrl+4** |
 | Reading LTR / RTL | **Ctrl+→** / **Ctrl+←** |
@@ -117,19 +136,39 @@ If you use the harness scripts:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\omaya\.harness\scripts\quality-gate.ps1 -ProjectRoot .
 ```
 
-Core logic is covered by unit tests under `src/shared/*.test.ts` (format, recent list, reading position, search, settings, theme, page mode, comics).
+Core logic is covered by unit tests under `src/shared/*.test.ts` and related files (format, recent list, reading position, search, settings, theme, page mode, comics, TXT pages, drag-pan, viewport stability).
+
+### TXT resume checks (optional local scripts)
+
+```bash
+npx tsx scripts/verify-txt-resume.mts
+npx tsx scripts/e2e-txt-resume.mts
+```
+
+These expect a large fixture at `samples/TestFile.txt` (not shipped in the repo; place locally for manual/E2E checks).
+
+Headless Electron open-path check:
+
+```bash
+set ABR_E2E_TXT_RESUME=samples\TestFile.txt
+set ABR_E2E_TXT_OFFSET=13723349
+npx electron .
+```
 
 ## Project layout
 
 ```
 .github/workflows/ CI (PR / main)
-electron/          Main process, preload, store
+electron/          Main process, preload, store, TXT page session
 src/
-  components/      Home, TXT/PDF/EPUB/comic viewers
+  components/      Home, viewers, page preview strip
   shared/          Pure helpers + unit tests
+  comicPageCache.ts / thumbCache.ts  Comic & strip caches
+  readerViewport.ts                  Stable stage measurement
+  useReaderDragPan.ts                Click-drag pan
   App.tsx          Shell, toolbar, shortcuts
-samples/           Sample books for manual checks
-scripts/           Release helper scripts
+samples/           Local sample books (large fixtures gitignored)
+scripts/           Release + TXT resume helpers
 ```
 
 ## License

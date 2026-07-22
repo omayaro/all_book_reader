@@ -251,7 +251,7 @@ input {
   flex: 1;
   min-height: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: var(--reader-bg);
   /* Always separate content from the OS menu bar */
   border-top: 3px solid var(--page-frame);
@@ -264,8 +264,11 @@ input {
 
 .reader-stage {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
+  /* Reserve scrollbar lane so client/content box does not toggle at fit edges. */
+  scrollbar-gutter: stable both-edges;
   padding: 1rem;
   outline: none;
   /* block layout so oversized zoomed pages scroll from the top */
@@ -274,6 +277,72 @@ input {
 
 .reader-stage:focus-visible {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.page-preview-strip {
+  flex: 0 0 96px;
+  width: 96px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+}
+
+.page-preview-scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.page-preview-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.page-preview-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 112px;
+  margin: 0;
+  padding: 0.35rem 0.4rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+}
+
+.page-preview-item img,
+.page-preview-placeholder {
+  width: 72px;
+  height: 84px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow: var(--shadow);
+}
+
+.page-preview-placeholder {
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+}
+
+.page-preview-item.active img,
+.page-preview-item.active .page-preview-placeholder {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.page-preview-item.active {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .txt-viewer {
@@ -311,23 +380,54 @@ input {
   box-shadow: var(--shadow);
 }
 
+.pdf-viewer canvas[width='0'],
+.pdf-viewer canvas[height='0'] {
+  display: none !important;
+  border: 0;
+  box-shadow: none;
+}
+
+.comic-viewer-host,
+.pdf-viewer {
+  box-sizing: border-box;
+  cursor: grab;
+  touch-action: none;
+}
+
+.comic-viewer-host {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  height: max-content;
+}
+
+.reader-stage.is-panning,
+.reader-stage.is-panning * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 .comic-viewer {
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.75rem;
-  width: max-content;
-  min-width: 100%;
-  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .comic-viewer img {
-  max-height: none;
+  display: block;
+  flex: 0 0 auto;
   max-width: none;
-  height: auto;
+  max-height: none;
+  object-fit: fill;
   background: #fff;
   border: 3px solid var(--page-frame);
   box-shadow: var(--shadow);
+  -webkit-user-drag: none;
 }
 
 .comic-placeholder {
