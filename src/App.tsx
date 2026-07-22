@@ -678,7 +678,8 @@ export default function App() {
               />
             )}
           </div>
-          {(book.format === 'pdf' || book.format === 'comic') && book.totalPages > 0 && (
+          {(book.format === 'pdf' || book.format === 'comic' || book.format === 'txt') &&
+            book.totalPages > 0 && (
             <PagePreviewStrip
               format={book.format}
               bookId={book.id}

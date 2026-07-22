@@ -24,7 +24,7 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 - TXT/EPUB **font size** via zoom / font shortcuts
 
 ### PDF & comics
-- **Right-hand page preview strip** (PDF + comic only; not TXT/EPUB)
+- **Right-hand page preview strip** (PDF, comic, and TXT fixed pages; not EPUB)
 - Comic **prefetch** of nearby pages to reduce turn delay
 - **Click-drag pan** when zoomed in (left mouse button) on comic images and PDF
 - Zoom/layout sizing uses a stable viewport measure to avoid fit-edge **jitter** (scrollbar feedback)
@@ -34,6 +34,7 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 - Same **Page Up/Down / page jump** controls as PDF
 - **Resume** stores last page + page-start byte offset (reopen lands on the same region)
 - In-page search can walk forward/backward across pages
+- **Page preview strip** shows text snippets per page (same strip UI as PDF/comic)
 
 ### General
 - **Theme** dropdown: Light / Dark (**Ctrl+D** toggles)

@@ -30,3 +30,8 @@ export function pageFromStripOffset(
   const index = Math.floor(offsetY / itemHeight);
   return clampPage(index + 1, totalPages);
 }
+
+/** Compact preview text drawn into TXT strip thumbnails. */
+export function txtThumbPreviewText(text: string, maxChars = 220): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, maxChars);
+}

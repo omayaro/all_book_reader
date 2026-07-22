@@ -1,5 +1,6 @@
 import { getApi } from './api';
 import * as pdfjs from 'pdfjs-dist';
+import { txtThumbPreviewText } from './shared/pageStrip';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -126,4 +127,66 @@ export function clearThumbCache(): void {
 
 export async function loadPdfDocument(data: ArrayBuffer): Promise<pdfjs.PDFDocumentProxy> {
   return pdfjs.getDocument({ data: data.slice(0) }).promise;
+}
+
+const TXT_THUMB_HEIGHT = 84;
+
+async function renderTxtThumb(pageNumber: number): Promise<string> {
+  const page = await getApi().readTxtPage(pageNumber);
+  const preview = txtThumbPreviewText(page.text);
+  const canvas = document.createElement('canvas');
+  canvas.width = THUMB_WIDTH;
+  canvas.height = TXT_THUMB_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No 2d context');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.font = '9px Consolas, "Courier New", monospace';
+  const lineHeight = 11;
+  const maxWidth = THUMB_WIDTH - 8;
+  const x = 4;
+  let y = 12;
+  const words = preview.length > 0 ? preview.split(' ') : [' '];
+  let line = '';
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, y);
+      line = word;
+      y += lineHeight;
+      if (y > TXT_THUMB_HEIGHT - 4) break;
+    } else {
+      line = test;
+    }
+  }
+  if (y <= TXT_THUMB_HEIGHT - 4 && line) {
+    ctx.fillText(line, x, y);
+  }
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
+export function getTxtThumbUrl(pageNumber: number, bookId: string): Promise<string> {
+  const key = cacheKey('txt', pageNumber, bookId);
+  const hit = cache.get(key);
+  if (hit) {
+    touch(key);
+    return Promise.resolve(hit);
+  }
+  let pending = inflight.get(key);
+  if (!pending) {
+    pending = renderTxtThumb(pageNumber)
+      .then((url) => {
+        cache.set(key, url);
+        touch(key);
+        inflight.delete(key);
+        return url;
+      })
+      .catch((error) => {
+        inflight.delete(key);
+        throw error;
+      });
+    inflight.set(key, pending);
+  }
+  return pending;
 }

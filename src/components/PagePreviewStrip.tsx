@@ -4,6 +4,7 @@ import {
   clearThumbCache,
   getComicThumbUrl,
   getPdfThumbUrl,
+  getTxtThumbUrl,
   loadPdfDocument,
 } from '../thumbCache';
 import { comicSpreadPages, type ReadingDirection } from '../shared/comic';
@@ -16,7 +17,7 @@ import {
 import type { PageMode } from '../types';
 
 interface PagePreviewStripProps {
-  format: 'pdf' | 'comic';
+  format: 'pdf' | 'comic' | 'txt';
   bookId: string;
   totalPages: number;
   page: number;
@@ -45,7 +46,8 @@ export function PagePreviewStrip({
 
   const activePages = useMemo(() => {
     const set = new Set<number>();
-    if (pageMode === 'two') {
+    // TXT two-column is layout-only (not a page spread).
+    if (pageMode === 'two' && format !== 'txt') {
       if (format === 'comic') {
         const pair = comicSpreadPages(page, totalPages, readingDirection);
         if (pair.left != null) set.add(pair.left);
@@ -130,9 +132,11 @@ export function PagePreviewStrip({
           const url =
             format === 'comic'
               ? await getComicThumbUrl(p, bookId)
-              : pdfDoc
-                ? await getPdfThumbUrl(pdfDoc, p, bookId)
-                : null;
+              : format === 'txt'
+                ? await getTxtThumbUrl(p, bookId)
+                : pdfDoc
+                  ? await getPdfThumbUrl(pdfDoc, p, bookId)
+                  : null;
           if (!url || cancelled) continue;
           setThumbs((prev) => (prev[p] ? prev : { ...prev, [p]: url }));
         } catch {
