@@ -1,0 +1,362 @@
+:root {
+  color-scheme: light;
+  --bg: #f3f0e8;
+  --bg-elevated: #fffdf8;
+  --ink: #1f1a14;
+  --muted: #6b6258;
+  --accent: #0f5c4c;
+  --accent-soft: #d7ebe4;
+  --border: #d9d0c3;
+  --danger: #9b2c2c;
+  --reader-bg: #c5cec9;
+  --toolbar-bg: #dfe8e4;
+  --page-frame: #1a1a1a;
+  --shadow: 0 10px 30px rgba(31, 26, 20, 0.08);
+  font-family: "Segoe UI", "Candara", "Trebuchet MS", sans-serif;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #171411;
+  --bg-elevated: #221e19;
+  --ink: #f4efe6;
+  --muted: #b3a89a;
+  --accent: #6fc4ae;
+  --accent-soft: #243832;
+  --border: #3a332b;
+  --danger: #f0a0a0;
+  --reader-bg: #12100e;
+  --toolbar-bg: #2a3531;
+  --page-frame: #e8e2d8;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: radial-gradient(circle at top left, rgba(15, 92, 76, 0.12), transparent 40%),
+    var(--bg);
+  color: var(--ink);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.app.toolbar-hidden .reader,
+.app.toolbar-hidden .home {
+  flex: 1;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 2px solid var(--accent);
+  background: var(--toolbar-bg);
+  box-shadow: var(--shadow);
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.toolbar .spacer {
+  flex: 1;
+}
+
+.toolbar button,
+.home-actions button,
+.book-row button {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+
+.toolbar button:hover,
+.home-actions button:hover,
+.book-row button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.toolbar input[type='search'],
+.toolbar .page-input,
+.toolbar select {
+  min-width: 180px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  background: var(--bg-elevated);
+  color: var(--ink);
+}
+
+.toolbar .theme-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.toolbar .theme-select select {
+  min-width: 7rem;
+  cursor: pointer;
+}
+
+.toolbar .toolbar-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toolbar .toolbar-pin input {
+  cursor: pointer;
+}
+
+.toolbar .page-input {
+  min-width: 4rem;
+  width: 4rem;
+  text-align: center;
+}
+
+.toolbar .page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.toolbar .page-total {
+  min-width: 2.5rem;
+}
+
+.status {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.home {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 2rem clamp(1rem, 4vw, 3rem);
+}
+
+.home-hero {
+  max-width: 720px;
+  margin-bottom: 1.5rem;
+}
+
+.home-hero h1 {
+  margin: 0 0 0.4rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: -0.03em;
+}
+
+.home-hero p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 40rem;
+}
+
+.home-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1.25rem 0 2rem;
+}
+
+.drop-hint {
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+}
+
+.book-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.book-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+}
+
+.book-row.missing {
+  opacity: 0.75;
+}
+
+.book-row h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.book-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.reader {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--reader-bg);
+  /* Always separate content from the OS menu bar */
+  border-top: 3px solid var(--page-frame);
+  box-shadow: inset 0 8px 12px -10px rgba(0, 0, 0, 0.35);
+}
+
+.app.toolbar-hidden .reader {
+  border-top-width: 4px;
+}
+
+.reader-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+  outline: none;
+  /* block layout so oversized zoomed pages scroll from the top */
+  display: block;
+}
+
+.reader-stage:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.txt-viewer {
+  max-width: 920px;
+  margin: 0 auto;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  padding: 1.5rem;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  border: 3px solid var(--page-frame);
+  box-shadow: var(--shadow);
+}
+
+.txt-viewer.two-column {
+  column-count: 2;
+  column-gap: 2rem;
+  max-width: 1200px;
+}
+
+.pdf-viewer {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1rem;
+  width: max-content;
+  min-width: 100%;
+  margin: 0 auto;
+}
+
+.pdf-viewer canvas {
+  max-width: none;
+  background: white;
+  border: 3px solid var(--page-frame);
+  box-shadow: var(--shadow);
+}
+
+.comic-viewer {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: max-content;
+  min-width: 100%;
+  margin: 0 auto;
+}
+
+.comic-viewer img {
+  max-height: none;
+  max-width: none;
+  height: auto;
+  background: #fff;
+  border: 3px solid var(--page-frame);
+  box-shadow: var(--shadow);
+}
+
+.comic-placeholder {
+  min-width: 120px;
+  min-height: 180px;
+  border: 2px dashed var(--page-frame);
+  border-radius: 8px;
+}
+
+.epub-viewer {
+  height: 100%;
+  min-height: 480px;
+  background: #fff;
+  border: 3px solid var(--page-frame);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.epub-viewer.two-column :global(.epub-view) {
+  width: 100%;
+}
+
+.search-hit {
+  background: color-mix(in srgb, gold 55%, transparent);
+}
+
+.app.dragging .drop-hint,
+.app.dragging .reader {
+  outline: 2px dashed var(--accent);
+  outline-offset: -8px;
+}
