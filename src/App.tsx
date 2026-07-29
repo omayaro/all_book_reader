@@ -3,7 +3,7 @@ import { getApi } from './api';
 import { Home } from './components/Home';
 import { TxtViewer } from './components/TxtViewer';
 import { PdfViewer } from './components/PdfViewer';
-import { EpubViewer } from './components/EpubViewer';
+import { EpubViewer, type EpubNavigator } from './components/EpubViewer';
 import { ComicViewer } from './components/ComicViewer';
 import { PagePreviewStrip } from './components/PagePreviewStrip';
 import { clampFontSize, clampZoom, isThemeSetting, mergeSettings, zoomAtMax, zoomAtMin } from './shared/settings';
@@ -49,6 +49,7 @@ export default function App() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const txtProgressRef = useRef({ ratio: 0, byteOffset: 0 });
   const readerStageRef = useRef<HTMLDivElement>(null);
+  const epubNavRef = useRef<EpubNavigator | null>(null);
   const resolvedTheme = resolveTheme(settings.theme);
 
   const persistSettings = useCallback(async (partial: Partial<AppSettings>) => {
@@ -251,6 +252,13 @@ export default function App() {
   const movePage = useCallback(
     (delta: number) => {
       if (!book) return;
+      // EPUB: turn via rendition next/prev so navigation survives maximize/fullscreen resize.
+      // Location-index display() often no-ops for adjacent pages after the manager clears.
+      if (book.format === 'epub' && epubNavRef.current) {
+        if (delta > 0) void epubNavRef.current.next();
+        else if (delta < 0) void epubNavRef.current.prev();
+        return;
+      }
       const total = Math.max(1, book.totalPages || 1);
       const twoPage =
         settings.pageMode === 'two' && (book.format === 'pdf' || book.format === 'comic');
@@ -660,6 +668,9 @@ export default function App() {
                 searchNonce={searchNonce}
                 onPageChange={scheduleProgressSave}
                 onSearchDone={setStatus}
+                onNavigatorReady={(nav) => {
+                  epubNavRef.current = nav;
+                }}
               />
             )}
             {book.format === 'comic' && (
