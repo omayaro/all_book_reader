@@ -3,6 +3,11 @@ import ePub, { type Book, type Rendition } from 'epubjs';
 import type { PageMode } from '../types';
 import { clampPage } from '../shared/pageMode';
 
+export interface EpubNavigator {
+  next: () => Promise<void>;
+  prev: () => Promise<void>;
+}
+
 interface EpubViewerProps {
   data: ArrayBuffer;
   fontSize: number;
@@ -13,6 +18,14 @@ interface EpubViewerProps {
   searchNonce: number;
   onPageChange: (page: number, totalPages: number) => void;
   onSearchDone: (message: string) => void;
+  onNavigatorReady?: (navigator: EpubNavigator | null) => void;
+}
+
+function hostSize(host: HTMLElement): { width: number; height: number } {
+  return {
+    width: Math.max(1, Math.floor(host.clientWidth)),
+    height: Math.max(1, Math.floor(host.clientHeight)),
+  };
 }
 
 export function EpubViewer({
@@ -25,23 +38,34 @@ export function EpubViewer({
   searchNonce,
   onPageChange,
   onSearchDone,
+  onNavigatorReady,
 }: EpubViewerProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const syncedPageRef = useRef(page);
+  const onNavigatorReadyRef = useRef(onNavigatorReady);
+  onNavigatorReadyRef.current = onNavigatorReady;
 
   useEffect(() => {
     if (!hostRef.current) return;
+    const host = hostRef.current;
     const book = ePub(data.slice(0));
     bookRef.current = book;
-    const rendition = book.renderTo(hostRef.current, {
+    // Percentage sizing keeps epubjs' own window resize listener enabled.
+    const rendition = book.renderTo(host, {
       width: '100%',
       height: '100%',
       flow: 'paginated',
       spread: pageMode === 'two' ? 'always' : 'none',
     });
     renditionRef.current = rendition;
+
+    const navigator: EpubNavigator = {
+      next: () => Promise.resolve(rendition.next()).then(() => undefined),
+      prev: () => Promise.resolve(rendition.prev()).then(() => undefined),
+    };
+    onNavigatorReadyRef.current?.(navigator);
 
     void book.ready.then(async () => {
       await book.locations.generate(1000);
@@ -61,7 +85,60 @@ export function EpubViewer({
       onPageChange(next, total);
     });
 
+    // epub.js iframes swallow keys; re-dispatch so App page/zoom handlers still run
+    // after the user focuses content (common after maximize/fullscreen).
+    const onIframeKey = (event: KeyboardEvent) => {
+      const key = event.key;
+      const nav =
+        key === 'PageDown' ||
+        key === 'PageUp' ||
+        key === 'ArrowLeft' ||
+        key === 'ArrowRight' ||
+        key === '+' ||
+        key === '-' ||
+        event.code === 'NumpadAdd' ||
+        event.code === 'NumpadSubtract';
+      if (!nav) return;
+      event.preventDefault();
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: event.key,
+          code: event.code,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    };
+    rendition.on('keydown', onIframeKey);
+
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastSize = { width: 0, height: 0 };
+    const resizeToHost = () => {
+      const size = hostSize(host);
+      if (
+        Math.abs(size.width - lastSize.width) < 2 &&
+        Math.abs(size.height - lastSize.height) < 2
+      ) {
+        return;
+      }
+      lastSize = size;
+      rendition.resize(size.width, size.height);
+    };
+    const observer = new ResizeObserver(() => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resizeToHost, 80);
+    });
+    observer.observe(host);
+
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      observer.disconnect();
+      rendition.off('keydown', onIframeKey);
+      onNavigatorReadyRef.current?.(null);
       rendition.destroy();
       void book.destroy();
       bookRef.current = null;
