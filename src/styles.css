@@ -57,6 +57,54 @@ input {
   min-height: 0;
 }
 
+.update-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 0.85rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+  flex-shrink: 0;
+  z-index: 3;
+}
+
+.update-banner span {
+  flex: 1;
+  min-width: 12rem;
+  font-size: 0.92rem;
+}
+
+.update-banner-link {
+  border: 1px solid var(--accent);
+  background: var(--bg-elevated);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 0.2rem 0.65rem;
+  cursor: pointer;
+}
+
+.update-banner-link:hover {
+  background: var(--accent);
+  color: var(--bg-elevated);
+}
+
+.update-banner-dismiss {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+}
+
+.update-banner-dismiss:hover {
+  color: var(--ink);
+}
+
 .app.toolbar-hidden .reader,
 .app.toolbar-hidden .home {
   flex: 1;

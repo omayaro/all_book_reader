@@ -10,6 +10,7 @@ import { clampFontSize, clampZoom, isThemeSetting, mergeSettings, zoomAtMax, zoo
 import { clampScrollRatio } from './shared/recent';
 import { nextTheme, resolveTheme } from './shared/theme';
 import { isSupportedBookFile } from './shared/format';
+import { shouldShowUpdateBanner } from './shared/appUpdate';
 import {
   arrowKeyPageDelta,
   isReadingDirection,
@@ -23,6 +24,7 @@ import type {
   PageMode,
   RecentBook,
 } from './types';
+import type { UpdateCheckResult } from './api';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -46,6 +48,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchDirection, setSearchDirection] = useState<'next' | 'prev' | null>(null);
   const [searchNonce, setSearchNonce] = useState(0);
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const txtProgressRef = useRef({ ratio: 0, byteOffset: 0 });
   const readerStageRef = useRef<HTMLDivElement>(null);
@@ -291,6 +294,21 @@ export default function App() {
   }, [refreshState]);
 
   useEffect(() => {
+    let cancelled = false;
+    void getApi()
+      .checkForUpdates()
+      .then((result) => {
+        if (!cancelled) setUpdateInfo(result);
+      })
+      .catch(() => {
+        /* ignore offline / network errors */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
   }, [resolvedTheme]);
 
@@ -473,10 +491,54 @@ export default function App() {
     setSearchNonce((value) => value + 1);
   };
 
+  const showUpdateBanner = Boolean(
+    updateInfo &&
+      shouldShowUpdateBanner(
+        updateInfo.latestVersion,
+        updateInfo.currentVersion,
+        settings.dismissedUpdateVersion,
+      ),
+  );
+
+  const dismissUpdateBanner = () => {
+    const version = updateInfo?.latestVersion;
+    if (!version) {
+      setUpdateInfo(null);
+      return;
+    }
+    void persistSettings({ dismissedUpdateVersion: version });
+  };
+
   return (
     <div
       className={`app${dragging ? ' dragging' : ''}${!book || !settings.toolbarVisible ? ' toolbar-hidden' : ''}`}
     >
+      {showUpdateBanner && updateInfo?.latestVersion && (
+        <div className="update-banner" role="status">
+          <span>
+            Version <strong>{updateInfo.latestVersion}</strong> is available
+            {updateInfo.currentVersion ? ` (you have ${updateInfo.currentVersion})` : ''}.
+          </span>
+          <button
+            type="button"
+            className="update-banner-link"
+            onClick={() =>
+              void getApi().openReleasesPage(updateInfo.htmlUrl ?? undefined)
+            }
+          >
+            View release
+          </button>
+          <button
+            type="button"
+            className="update-banner-dismiss"
+            title="Dismiss"
+            aria-label="Dismiss update notification"
+            onClick={dismissUpdateBanner}
+          >
+            ×
+          </button>
+        </div>
+      )}
       {book && settings.toolbarVisible && (
       <div className="toolbar">
         <label className="toolbar-pin" title="Uncheck to hide the options toolbar">

@@ -11,6 +11,12 @@ import path from 'node:path';
 import { buildBookId } from '../src/shared/bookId';
 import { detectFormat, getBookTitle, isSupportedBookFile } from '../src/shared/format';
 import { seriesSiblingBasenames } from '../src/shared/seriesSibling';
+import {
+  GITHUB_LATEST_RELEASE_API,
+  GITHUB_RELEASES_URL,
+  isNewerVersion,
+  normalizeVersion,
+} from '../src/shared/appUpdate';
 import type { AppSettings, OpenBookResult } from '../src/types';
 import {
   clearComicSession,
@@ -132,6 +138,12 @@ function createMenu(): void {
       label: 'Help',
       submenu: [
         {
+          label: 'Check for Updates…',
+          click: () => {
+            void shell.openExternal(GITHUB_RELEASES_URL);
+          },
+        },
+        {
           label: 'About All Book Reader',
           accelerator: 'CmdOrCtrl+Shift+A',
           click: () => {
@@ -140,7 +152,7 @@ function createMenu(): void {
               title: 'About All Book Reader',
               message: 'All Book Reader',
               detail:
-                'Version 1.0.0\n\nRead TXT, PDF, EPUB, and ZIP/CBZ comics on Windows.\n\nSupports single/two-page view, resume, recent books, and drag-and-drop.',
+                `Version ${app.getVersion()}\n\nRead TXT, PDF, EPUB, and ZIP/CBZ comics on Windows.\n\nSupports single/two-page view, resume, recent books, and drag-and-drop.`,
               buttons: ['OK'],
               defaultId: 0,
               noLink: true,
@@ -406,6 +418,61 @@ function registerIpc(): void {
 
   ipcMain.handle('books:saveSettings', (_event, partial: Partial<AppSettings>) => {
     return store.saveSettings(partial);
+  });
+
+  ipcMain.handle('updates:check', async () => {
+    const currentVersion = app.getVersion();
+    try {
+      const response = await fetch(GITHUB_LATEST_RELEASE_API, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'AllBookReader',
+        },
+      });
+      if (!response.ok) {
+        return {
+          currentVersion,
+          latestVersion: null,
+          latestTag: null,
+          htmlUrl: GITHUB_RELEASES_URL,
+          hasUpdate: false,
+          error: `GitHub returned ${response.status}`,
+        };
+      }
+      const data = (await response.json()) as {
+        tag_name?: string;
+        html_url?: string;
+      };
+      const latestTag = typeof data.tag_name === 'string' ? data.tag_name : null;
+      const latestVersion = latestTag ? normalizeVersion(latestTag) : null;
+      return {
+        currentVersion,
+        latestVersion,
+        latestTag,
+        htmlUrl:
+          typeof data.html_url === 'string' && data.html_url
+            ? data.html_url
+            : GITHUB_RELEASES_URL,
+        hasUpdate: Boolean(latestVersion && isNewerVersion(latestVersion, currentVersion)),
+      };
+    } catch (error) {
+      return {
+        currentVersion,
+        latestVersion: null,
+        latestTag: null,
+        htmlUrl: GITHUB_RELEASES_URL,
+        hasUpdate: false,
+        error: error instanceof Error ? error.message : 'Update check failed',
+      };
+    }
+  });
+
+  ipcMain.handle('updates:openReleases', async (_event, url?: string) => {
+    const target =
+      typeof url === 'string' && /^https:\/\/github\.com\//i.test(url)
+        ? url
+        : GITHUB_RELEASES_URL;
+    await shell.openExternal(target);
   });
 }
 

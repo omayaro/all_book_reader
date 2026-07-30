@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   readingDirection: 'ltr',
   toolbarVisible: true,
   maxRecent: 20,
+  dismissedUpdateVersion: null,
 };
 
 const MIN_ZOOM = 0.25;
@@ -68,5 +69,12 @@ export function mergeSettings(partial?: Partial<AppSettings> | null): AppSetting
       typeof partial.maxRecent === 'number' && partial.maxRecent > 0
         ? Math.floor(partial.maxRecent)
         : base.maxRecent,
+    dismissedUpdateVersion:
+      typeof partial.dismissedUpdateVersion === 'string' &&
+      partial.dismissedUpdateVersion.trim()
+        ? partial.dismissedUpdateVersion.trim()
+        : partial.dismissedUpdateVersion === null
+          ? null
+          : base.dismissedUpdateVersion,
   };
 }

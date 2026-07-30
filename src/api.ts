@@ -9,6 +9,15 @@ export interface TxtPageResult {
   byteLength: number;
 }
 
+export interface UpdateCheckResult {
+  currentVersion: string;
+  latestVersion: string | null;
+  latestTag: string | null;
+  htmlUrl: string | null;
+  hasUpdate: boolean;
+  error?: string;
+}
+
 export interface ElectronApi {
   getState: () => Promise<AppState>;
   openFileDialog: () => Promise<OpenBookResult | null>;
@@ -27,6 +36,8 @@ export interface ElectronApi {
   ) => Promise<AppState['recentBooks']>;
   removeRecent: (idOrPath: string) => Promise<AppState['recentBooks']>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>;
+  checkForUpdates: () => Promise<UpdateCheckResult>;
+  openReleasesPage: (url?: string) => Promise<void>;
   getPathForFile: (file: File) => string;
   onMenuEvent: (handler: (channel: string, payload?: unknown) => void) => () => void;
 }

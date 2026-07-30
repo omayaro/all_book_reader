@@ -26,6 +26,14 @@ describe('settings', () => {
     expect(mergeSettings({ toolbarVisible: true }).toolbarVisible).toBe(true);
   });
 
+  it('merges dismissed update version', () => {
+    expect(mergeSettings().dismissedUpdateVersion).toBeNull();
+    expect(mergeSettings({ dismissedUpdateVersion: '1.0.4' }).dismissedUpdateVersion).toBe(
+      '1.0.4',
+    );
+    expect(mergeSettings({ dismissedUpdateVersion: null }).dismissedUpdateVersion).toBeNull();
+  });
+
   it('ignores invalid values', () => {
     const merged = mergeSettings({
       theme: 'neon' as never,

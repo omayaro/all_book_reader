@@ -33,6 +33,11 @@ export interface AppSettings {
   /** When false, the top options toolbar is hidden (restore via View menu). */
   toolbarVisible: boolean;
   maxRecent: number;
+  /**
+   * Latest release version the user dismissed in the update banner.
+   * Banner stays hidden until a newer release appears.
+   */
+  dismissedUpdateVersion: string | null;
 }
 
 export interface AppState {
