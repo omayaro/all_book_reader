@@ -92,6 +92,8 @@ export function EpubViewer({
       const nav =
         key === 'PageDown' ||
         key === 'PageUp' ||
+        key === 'Home' ||
+        key === 'End' ||
         key === 'ArrowLeft' ||
         key === 'ArrowRight' ||
         key === '+' ||

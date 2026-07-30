@@ -438,6 +438,16 @@ export default function App() {
         movePage(arrowKeyPageDelta(event.key, direction));
         return;
       }
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Home') {
+        event.preventDefault();
+        goToPage('1');
+        return;
+      }
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'End') {
+        event.preventDefault();
+        goToPage(String(Math.max(1, book.totalPages || 1)));
+        return;
+      }
 
       // Zoom: bare +/- only (no Ctrl). Handle in renderer — menu accelerators
       // often miss when the reader stage has focus (e.g. single-page mode).
@@ -456,7 +466,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [book, movePage, openSeriesSibling, zoomBy, settings.readingDirection, persistSettings]);
+  }, [book, movePage, openSeriesSibling, goToPage, zoomBy, settings.readingDirection, persistSettings]);
 
   const runSearch = (direction: 'next' | 'prev') => {
     setSearchDirection(direction);
@@ -557,6 +567,22 @@ export default function App() {
           title="Next book (Page Down)"
         >
           Page Down
+        </button>
+        <button
+          type="button"
+          disabled={!book}
+          onClick={() => goToPage('1')}
+          title="First page (Home)"
+        >
+          Home
+        </button>
+        <button
+          type="button"
+          disabled={!book}
+          onClick={() => goToPage(String(Math.max(1, book.totalPages || 1)))}
+          title="Last page (End)"
+        >
+          End
         </button>
         <label className="page-jump" title="Go to page">
           <span>Page</span>
