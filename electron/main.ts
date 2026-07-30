@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildBookId } from '../src/shared/bookId';
 import { detectFormat, getBookTitle, isSupportedBookFile } from '../src/shared/format';
+import { seriesSiblingBasenames } from '../src/shared/seriesSibling';
 import type { AppSettings, OpenBookResult } from '../src/types';
 import {
   clearComicSession,
@@ -345,6 +346,26 @@ function registerIpc(): void {
   ipcMain.handle('books:openPath', async (_event, filePath: string) => {
     return openBookFromPath(filePath);
   });
+
+  ipcMain.handle(
+    'books:resolveSeriesSibling',
+    (_event, filePath: string, delta: number) => {
+      if (typeof filePath !== 'string' || !filePath) return null;
+      if (typeof delta !== 'number' || !Number.isFinite(delta) || delta === 0) {
+        return null;
+      }
+      const names = seriesSiblingBasenames(filePath, delta);
+      if (!names) return null;
+      const dir = path.dirname(filePath);
+      for (const name of names) {
+        const candidate = path.join(dir, name);
+        if (fs.existsSync(candidate) && isSupportedBookFile(candidate)) {
+          return candidate;
+        }
+      }
+      return null;
+    },
+  );
 
   ipcMain.handle('books:close', () => {
     clearComicSession();

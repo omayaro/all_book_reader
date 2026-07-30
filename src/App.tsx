@@ -125,6 +125,25 @@ export default function App() {
     [openResult, flushTxtProgress],
   );
 
+  const openSeriesSibling = useCallback(
+    async (delta: number) => {
+      if (!book) return;
+      if (book.format === 'txt') {
+        await flushTxtProgress();
+      } else {
+        await getApi().updateProgress(book.id, page, book.totalPages);
+      }
+      const nextPath = await getApi().resolveSeriesSibling(book.path, delta);
+      if (!nextPath) {
+        setStatus(delta > 0 ? 'No next volume found.' : 'No previous volume found.');
+        return;
+      }
+      const result = await getApi().openPath(nextPath);
+      openResult(result);
+    },
+    [book, page, flushTxtProgress, openResult],
+  );
+
   const closeBook = useCallback(async () => {
     if (book) {
       if (book.format === 'txt') {
@@ -395,14 +414,15 @@ export default function App() {
 
       if (!book) return;
 
+      // PageUp / PageDown: previous / next series volume (filename number ±1).
       if (event.key === 'PageDown') {
         event.preventDefault();
-        movePage(1);
+        void openSeriesSibling(1);
         return;
       }
       if (event.key === 'PageUp') {
         event.preventDefault();
-        movePage(-1);
+        void openSeriesSibling(-1);
         return;
       }
       if (
@@ -416,6 +436,16 @@ export default function App() {
         const direction =
           book.format === 'comic' ? settings.readingDirection : 'ltr';
         movePage(arrowKeyPageDelta(event.key, direction));
+        return;
+      }
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Home') {
+        event.preventDefault();
+        goToPage('1');
+        return;
+      }
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'End') {
+        event.preventDefault();
+        goToPage(String(Math.max(1, book.totalPages || 1)));
         return;
       }
 
@@ -436,7 +466,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [book, movePage, zoomBy, settings.readingDirection, persistSettings]);
+  }, [book, movePage, openSeriesSibling, goToPage, zoomBy, settings.readingDirection, persistSettings]);
 
   const runSearch = (direction: 'next' | 'prev') => {
     setSearchDirection(direction);
@@ -522,11 +552,37 @@ export default function App() {
         >
           +
         </button>
-        <button type="button" disabled={!book} onClick={() => movePage(-1)} title="Page Up">
+        <button
+          type="button"
+          disabled={!book}
+          onClick={() => void openSeriesSibling(-1)}
+          title="Previous book (Page Up)"
+        >
           Page Up
         </button>
-        <button type="button" disabled={!book} onClick={() => movePage(1)} title="Page Down">
+        <button
+          type="button"
+          disabled={!book}
+          onClick={() => void openSeriesSibling(1)}
+          title="Next book (Page Down)"
+        >
           Page Down
+        </button>
+        <button
+          type="button"
+          disabled={!book}
+          onClick={() => goToPage('1')}
+          title="First page (Home)"
+        >
+          Home
+        </button>
+        <button
+          type="button"
+          disabled={!book}
+          onClick={() => goToPage(String(Math.max(1, book.totalPages || 1)))}
+          title="Last page (End)"
+        >
+          End
         </button>
         <label className="page-jump" title="Go to page">
           <span>Page</span>
