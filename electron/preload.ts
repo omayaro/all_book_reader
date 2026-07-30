@@ -15,6 +15,7 @@ export interface ElectronApi {
   openFileDialog: () => Promise<OpenBookResult | null>;
   openFolderDialog: () => Promise<OpenBookResult | null>;
   openPath: (filePath: string) => Promise<OpenBookResult | null>;
+  resolveSeriesSibling: (filePath: string, delta: number) => Promise<string | null>;
   closeBook: () => Promise<void>;
   readComicPage: (index: number) => Promise<ArrayBuffer>;
   readTxtPage: (page: number) => Promise<TxtPageResult>;
@@ -36,6 +37,8 @@ const api: ElectronApi = {
   openFileDialog: () => ipcRenderer.invoke('books:openDialog'),
   openFolderDialog: () => ipcRenderer.invoke('books:openFolderDialog'),
   openPath: (filePath: string) => ipcRenderer.invoke('books:openPath', filePath),
+  resolveSeriesSibling: (filePath: string, delta: number) =>
+    ipcRenderer.invoke('books:resolveSeriesSibling', filePath, delta),
   closeBook: () => ipcRenderer.invoke('books:close'),
   readComicPage: (index: number) => ipcRenderer.invoke('comic:readPage', index),
   readTxtPage: (page) => ipcRenderer.invoke('txt:readPage', page),

@@ -49,7 +49,8 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 |--------|----------|
 | Zoom in / out | **+** / **-** (no Ctrl) |
 | Larger / smaller font | **Ctrl+Plus** / **Ctrl+-** |
-| Next / previous page | **PageDown** / **PageUp**; arrows **→/←** (LTR) or **←/→** (RTL comics) |
+| Next / previous page | Arrows **→/←** (LTR) or **←/→** (RTL comics) |
+| Next / previous book | **PageDown** / **PageUp** (same-folder volume: filename number ±1; tries `.zip`/`.cbz`/`.pdf`/`.epub`/`.txt`) |
 | Go to page | Digits in **Page**, then **Enter** or **Go** (focus returns to reader) |
 | Pan zoomed image/PDF | **Left-click drag** |
 | Single / two pages | **Ctrl+1** / **Ctrl+2** |

@@ -14,6 +14,7 @@ export interface ElectronApi {
   openFileDialog: () => Promise<OpenBookResult | null>;
   openFolderDialog: () => Promise<OpenBookResult | null>;
   openPath: (filePath: string) => Promise<OpenBookResult | null>;
+  resolveSeriesSibling: (filePath: string, delta: number) => Promise<string | null>;
   closeBook: () => Promise<void>;
   readComicPage: (index: number) => Promise<ArrayBuffer>;
   readTxtPage: (page: number) => Promise<TxtPageResult>;

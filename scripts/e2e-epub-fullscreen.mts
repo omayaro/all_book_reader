@@ -144,12 +144,12 @@ async function main(): Promise<void> {
       const doc = iframe && iframe.contentDocument;
       if (doc) {
         doc.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'PageDown', code: 'PageDown', bubbles: true, cancelable: true,
+          key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true,
         }));
         return 'iframe';
       }
       window.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'PageDown', code: 'PageDown', bubbles: true, cancelable: true,
+        key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true,
       }));
       return 'window';
     })()
@@ -162,9 +162,9 @@ async function main(): Promise<void> {
 
   if (pageAfter === pageBefore) {
     await evaluate(`
-      [...document.querySelectorAll('button')]
-        .find((b) => (b.title || '') === 'Page Down')
-        ?.click()
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight', code: 'ArrowRight', bubbles: true, cancelable: true,
+      }));
     `);
     await new Promise((r) => setTimeout(r, 900));
     pageAfter = await evaluate<string>(
