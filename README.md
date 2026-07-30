@@ -61,6 +61,9 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 | Toggle theme | **Ctrl+D** |
 | Open / Open folder / Close | **Ctrl+O** / **Ctrl+Shift+O** / **Ctrl+W** |
 | Exit | **Ctrl+Q** |
+| Check for updates | **Help → Check for Updates…** (opens GitHub Releases) |
+
+When a newer GitHub release exists, a dismissible banner appears at the top of the app.
 
 After **Enter** in Page, focus moves to the reader so paging keys work immediately.
 
