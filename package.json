@@ -66,13 +66,19 @@
           ]
         },
         {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "dir",
           "arch": [
             "x64"
           ]
         }
       ],
-      "artifactName": "AllBookReader-${version}-portable.${ext}"
+      "artifactName": "AllBookReader-${version}-${os}-${arch}.${ext}"
     },
     "portable": {
       "artifactName": "AllBookReader-${version}-portable.${ext}"
