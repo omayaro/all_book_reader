@@ -1,6 +1,6 @@
 {
   "name": "all-book-reader",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Windows book reader for TXT, PDF, and EPUB",
   "main": "dist-electron/electron/main.js",
   "author": "AllBookReader",
