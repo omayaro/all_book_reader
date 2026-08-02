@@ -41,7 +41,7 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 - In-book **search**
 - English UI and menus (**Help → About** popup: **Ctrl+Shift+A**)
 - **Pin toolbar** checkbox; **View → Toggle Toolbar** (**Ctrl+T**)
-- Portable Windows build under `release/` (local build only; not committed)
+- Windows builds under `release/` (portable `.exe` + unpacked `.zip`; local build only; not committed)
 
 ## Navigation & shortcuts
 
@@ -97,7 +97,7 @@ Starts the Vite dev server and opens the Electron window.
 | `npm start` | Run Electron against built `dist/` |
 | `npm test` | Unit tests (Vitest) |
 | `npm run lint` | ESLint |
-| `npm run dist` / `npm run release` | Refresh **`release/`** (portable `.exe` + `win-unpacked`) |
+| `npm run dist` / `npm run release` | Refresh **`release/`** (portable `.exe` + `.zip` + `win-unpacked`) |
 | `npm run dist:dir` | Unpacked app only under `release/win-unpacked/` |
 
 ## Release folder (local)
@@ -116,10 +116,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-release
 
 Output:
 
-- `release/AllBookReader-<version>-portable.exe`
-- `release/win-unpacked/All Book Reader.exe`
+- `release/AllBookReader-<version>-portable.exe` — single-file portable (slower cold start)
+- `release/AllBookReader-<version>-win-x64.zip` — unpacked folder archive (extract and run `All Book Reader.exe`)
+- `release/win-unpacked/All Book Reader.exe` — local unpacked build
 
-Portable mode stores settings next to the executable when `PORTABLE_EXECUTABLE_DIR` is set.
+Portable mode stores settings next to the executable when `PORTABLE_EXECUTABLE_DIR` is set. The zip/unpacked build uses normal `%APPDATA%` settings.
 
 ## Continuous integration
 
