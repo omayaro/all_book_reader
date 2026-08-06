@@ -6,6 +6,10 @@ export function isNavigableBookFileName(fileName: string): boolean {
   return isSupportedBookFile(fileName) || isImageFile(fileName);
 }
 
+function entryKey(name: string): string {
+  return name.normalize('NFC').toLowerCase();
+}
+
 /**
  * Next/previous basename in the same folder by natural name order.
  * `dirEntries` should already be filtered to navigable files (or sibling folders).
@@ -18,9 +22,11 @@ export function resolveFolderSiblingBasename(
   if (!Number.isFinite(delta) || delta === 0) return null;
   if (!currentBase || currentBase === '.' || currentBase === '..') return null;
 
-  const sorted = [...new Set(dirEntries)].sort(naturalCompare);
-  const currentLower = currentBase.toLowerCase();
-  const index = sorted.findIndex((name) => name.toLowerCase() === currentLower);
+  const sorted = [...new Set(dirEntries.map((name) => name.normalize('NFC')))].sort(
+    naturalCompare,
+  );
+  const currentKey = entryKey(currentBase);
+  const index = sorted.findIndex((name) => entryKey(name) === currentKey);
   if (index < 0) return null;
 
   const sibling = sorted[index + delta];

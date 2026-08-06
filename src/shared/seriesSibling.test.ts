@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   isNavigableBookFileName,
@@ -95,5 +97,39 @@ describe('resolveFolderSiblingBasename', () => {
     const names = ['chapter1.pdf', 'chapter2.epub', 'chapter3.zip', 'cover.jpg'];
     expect(resolveFolderSiblingBasename('chapter1.pdf', names, 1)).toBe('chapter2.epub');
     expect(resolveFolderSiblingBasename('chapter3.zip', names, 1)).toBe('cover.jpg');
+  });
+
+  it('matches Unicode-normalized basenames (NFC vs NFD)', () => {
+    const names = [
+      '용랑전 2부 - 중원요란전 05.zip',
+      '용랑전 2부 - 중원요란전 06(디카).zip',
+    ];
+    expect(
+      resolveFolderSiblingBasename(names[0]!.normalize('NFD'), names, 1),
+    ).toBe(names[1]);
+  });
+});
+
+describe('samples folder navigation (optional)', () => {
+  it('walks real 용랑전 zips in samples/ by name order', () => {
+    const samplesDir = path.resolve(__dirname, '../../samples');
+    if (!fs.existsSync(samplesDir)) return;
+
+    const entries = fs
+      .readdirSync(samplesDir)
+      .filter((name) => fs.statSync(path.join(samplesDir, name)).isFile())
+      .filter((name) => isNavigableBookFileName(name));
+
+    const yolang = entries.filter((name) => name.includes('용랑전') && name.endsWith('.zip'));
+    expect(yolang.length).toBeGreaterThanOrEqual(9);
+
+    const vol05 = yolang.find((name) => name.includes('05.zip'));
+    const vol06 = yolang.find((name) => name.includes('06('));
+    const vol07 = yolang.find((name) => name.includes('07.zip'));
+    expect(vol05 && vol06 && vol07).toBeTruthy();
+
+    expect(resolveFolderSiblingBasename(vol05!, entries, 1)).toBe(vol06);
+    expect(resolveFolderSiblingBasename(vol06!, entries, 1)).toBe(vol07);
+    expect(resolveFolderSiblingBasename(vol06!, entries, -1)).toBe(vol05);
   });
 });
