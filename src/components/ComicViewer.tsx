@@ -6,7 +6,7 @@ import {
   type ComicPageImage,
 } from '../comicPageCache';
 import { comicImageDisplaySize, comicSpreadPages, type ReadingDirection } from '../shared/comic';
-import { comicPrefetchPages } from '../shared/comicPrefetch';
+import { comicInitialWarmPages, comicPrefetchPages } from '../shared/comicPrefetch';
 import { measureReaderStage, stabilizeViewportSize } from '../readerViewport';
 import { useReaderDragPan } from '../useReaderDragPan';
 import type { FitMode, PageMode } from '../types';
@@ -88,7 +88,13 @@ export function ComicViewer({
         return;
       }
 
-      const keep = comicPrefetchPages(page, totalPages, pageMode);
+      // Near pages for flipping + ~10-page warm window so a large ZIP feels ready sooner.
+      const keep = [
+        ...new Set([
+          ...comicPrefetchPages(page, totalPages, pageMode),
+          ...comicInitialWarmPages(page, totalPages, pageMode),
+        ]),
+      ].sort((a, b) => a - b);
       void Promise.all(keep.map((p) => getComicPageImage(p).catch(() => null))).then(() => {
         if (!cancelled) retainComicPages(keep);
       });
