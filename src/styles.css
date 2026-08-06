@@ -146,6 +146,16 @@ input {
   background: var(--accent-soft);
 }
 
+.home-actions button.danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  color: var(--danger);
+}
+
+.home-actions button.danger:hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-elevated));
+}
+
 .toolbar button:disabled {
   opacity: 0.5;
   cursor: default;

@@ -13,7 +13,7 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 ### Opening & library
 - Open books via **File → Open**, toolbar **Open**, or **drag and drop**
 - **Comics:** `.zip` / `.cbz` (images inside) or an **image folder** (File → Open Folder)
-- **Recent books** (up to 20) with Missing badge and Remove
+- **Recent books** (up to 20) with Missing badge, Remove, and **Clear All History**
 - **Home (file list):** options toolbar is **hidden automatically**; it returns when a book is open (respects Pin)
 
 ### Reading modes

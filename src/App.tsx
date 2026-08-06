@@ -737,6 +737,18 @@ export default function App() {
               .removeRecent(item.id)
               .then(setRecentBooks);
           }}
+          onClearAll={() => {
+            if (
+              !window.confirm(
+                'Clear all recent books and saved reading positions? This cannot be undone.',
+              )
+            ) {
+              return;
+            }
+            void getApi()
+              .clearRecent()
+              .then(setRecentBooks);
+          }}
         />
       ) : (
         <div className="reader">
