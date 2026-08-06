@@ -13,7 +13,7 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 ### Opening & library
 - Open books via **File → Open**, toolbar **Open**, or **drag and drop**
 - **Comics:** `.zip` / `.cbz` (images inside) or an **image folder** (File → Open Folder)
-- **Recent books** (up to 20) with Missing badge and Remove
+- **Recent books** (up to 20) with Missing badge, Remove, and **Clear All History**
 - **Home (file list):** options toolbar is **hidden automatically**; it returns when a book is open (respects Pin)
 
 ### Reading modes
@@ -51,7 +51,7 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 | Larger / smaller font | **Ctrl+Plus** / **Ctrl+-** |
 | Next / previous page | Arrows **→/←** (LTR) or **←/→** (RTL comics) |
 | First / last page | **Home** / **End** |
-| Next / previous book | **PageDown** / **PageUp** (same-folder volume: filename number ±1; tries `.zip`/`.cbz`/`.pdf`/`.epub`/`.txt`) |
+| Next / previous book | **PageDown** / **PageUp** (same folder, natural name order among `.zip`/`.cbz`/`.pdf`/`.epub`/`.txt`/images) |
 | Go to page | Digits in **Page**, then **Enter** or **Go** (focus returns to reader) |
 | Pan zoomed image/PDF | **Left-click drag** |
 | Single / two pages | **Ctrl+1** / **Ctrl+2** |

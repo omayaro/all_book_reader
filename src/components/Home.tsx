@@ -6,6 +6,7 @@ interface HomeProps {
   onOpenFolder: () => void;
   onOpenBook: (book: RecentBook) => void;
   onRemove: (book: RecentBook) => void;
+  onClearAll: () => void;
 }
 
 export function Home({
@@ -14,6 +15,7 @@ export function Home({
   onOpenFolder,
   onOpenBook,
   onRemove,
+  onClearAll,
 }: HomeProps) {
   return (
     <div className="home">
@@ -32,6 +34,11 @@ export function Home({
         <button type="button" onClick={onOpenFolder}>
           Open Folder…
         </button>
+        {books.length > 0 && (
+          <button type="button" className="danger" onClick={onClearAll}>
+            Clear All History…
+          </button>
+        )}
       </div>
 
       <div className="drop-hint">Open a file or drop a book, ZIP/CBZ, or folder here.</div>

@@ -9,3 +9,6 @@ data
 # Large local TXT fixtures for resume E2E (not shipped)
 samples/TestFile.txt
 samples/*.local.txt
+# Local comic/book fixtures for manual / optional nav tests
+samples/*.zip
+samples/*.cbz

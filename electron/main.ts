@@ -10,7 +10,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildBookId } from '../src/shared/bookId';
 import { detectFormat, getBookTitle, isSupportedBookFile } from '../src/shared/format';
-import { seriesSiblingBasenames } from '../src/shared/seriesSibling';
+import { isImageFile } from '../src/shared/comic';
+import {
+  isNavigableBookFileName,
+  resolveFolderSiblingBasename,
+} from '../src/shared/seriesSibling';
 import {
   GITHUB_LATEST_RELEASE_API,
   GITHUB_RELEASES_URL,
@@ -22,6 +26,7 @@ import {
   clearComicSession,
   openComicArchive,
   openComicFolder,
+  openComicImageFile,
   readComicPage,
 } from './comicSession';
 import { clearTxtSession, openTxtSession, readTxtPage } from './txtSession';
@@ -181,16 +186,18 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
     return null;
   }
 
-  if (!isDirectory && !isSupportedBookFile(filePath)) {
+  const isImage = !isDirectory && isImageFile(filePath);
+  if (!isDirectory && !isSupportedBookFile(filePath) && !isImage) {
     await dialog.showMessageBox(mainWindow!, {
       type: 'warning',
       title: 'Unsupported file',
-      message: 'Only .txt, .pdf, .epub, .zip, and .cbz files (or an image folder) are supported.',
+      message:
+        'Only .txt, .pdf, .epub, .zip, .cbz, and image files (or an image folder) are supported.',
     });
     return null;
   }
 
-  const format = isDirectory ? 'comic' : detectFormat(filePath);
+  const format = isDirectory || isImage ? 'comic' : detectFormat(filePath);
   if (!format) return null;
 
   const stat = fs.statSync(filePath);
@@ -210,7 +217,9 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
     try {
       const comic = isDirectory
         ? openComicFolder(filePath)
-        : await openComicArchive(filePath);
+        : isImage
+          ? openComicImageFile(filePath)
+          : await openComicArchive(filePath);
       const totalPages = comic.entries.length;
       store.upsertRecent({
         id,
@@ -338,7 +347,10 @@ function registerIpc(): void {
       title: 'Open Book',
       properties: ['openFile'],
       filters: [
-        { name: 'Books', extensions: ['txt', 'pdf', 'epub', 'zip', 'cbz'] },
+        {
+          name: 'Books',
+          extensions: ['txt', 'pdf', 'epub', 'zip', 'cbz', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+        },
         { name: 'All Files', extensions: ['*'] },
       ],
     });
@@ -366,16 +378,41 @@ function registerIpc(): void {
       if (typeof delta !== 'number' || !Number.isFinite(delta) || delta === 0) {
         return null;
       }
-      const names = seriesSiblingBasenames(filePath, delta);
-      if (!names) return null;
+
+      let currentIsDirectory = false;
+      try {
+        currentIsDirectory = fs.statSync(filePath).isDirectory();
+      } catch {
+        return null;
+      }
+
       const dir = path.dirname(filePath);
-      for (const name of names) {
-        const candidate = path.join(dir, name);
-        if (fs.existsSync(candidate) && isSupportedBookFile(candidate)) {
-          return candidate;
+      const base = path.basename(filePath);
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(dir);
+      } catch {
+        return null;
+      }
+
+      const candidates: string[] = [];
+      for (const name of entries) {
+        const full = path.join(dir, name);
+        let entryIsDirectory = false;
+        try {
+          entryIsDirectory = fs.statSync(full).isDirectory();
+        } catch {
+          continue;
+        }
+        if (currentIsDirectory) {
+          if (entryIsDirectory) candidates.push(name);
+        } else if (!entryIsDirectory && isNavigableBookFileName(name)) {
+          candidates.push(name);
         }
       }
-      return null;
+
+      const sibling = resolveFolderSiblingBasename(base, candidates, delta);
+      return sibling ? path.join(dir, sibling) : null;
     },
   );
 
@@ -414,6 +451,10 @@ function registerIpc(): void {
 
   ipcMain.handle('books:removeRecent', (_event, idOrPath: string) => {
     return store.removeRecent(idOrPath);
+  });
+
+  ipcMain.handle('books:clearRecent', () => {
+    return store.clearRecent();
   });
 
   ipcMain.handle('books:saveSettings', (_event, partial: Partial<AppSettings>) => {

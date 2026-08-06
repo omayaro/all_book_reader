@@ -125,7 +125,12 @@ export function PagePreviewStrip({
     for (let p = range.start; p <= range.end; p += 1) pages.push(p);
 
     const load = async () => {
-      for (const p of pages) {
+      // Prefer the current page(s) so the strip isn't blank while neighbors load.
+      const ordered = [
+        ...[...activePages].filter((p) => p >= range.start && p <= range.end),
+        ...pages.filter((p) => !activePages.has(p)),
+      ];
+      for (const p of ordered) {
         if (cancelled) return;
         if (thumbs[p]) continue;
         try {
@@ -150,7 +155,7 @@ export function PagePreviewStrip({
     };
     // thumbs intentionally omitted to avoid reload loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.start, range.end, format, bookId, pdfDoc]);
+  }, [range.start, range.end, format, bookId, pdfDoc, activePages]);
 
   const selectFromClientY = (clientY: number) => {
     const el = scrollerRef.current;

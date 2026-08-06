@@ -6,12 +6,13 @@ import {
   type ComicPageImage,
 } from '../comicPageCache';
 import { comicImageDisplaySize, comicSpreadPages, type ReadingDirection } from '../shared/comic';
-import { comicPrefetchPages } from '../shared/comicPrefetch';
+import { comicInitialWarmPages, comicPrefetchPages } from '../shared/comicPrefetch';
 import { measureReaderStage, stabilizeViewportSize } from '../readerViewport';
 import { useReaderDragPan } from '../useReaderDragPan';
 import type { FitMode, PageMode } from '../types';
 
 interface ComicViewerProps {
+  bookId: string;
   page: number;
   totalPages: number;
   pageMode: PageMode;
@@ -22,6 +23,7 @@ interface ComicViewerProps {
 }
 
 export function ComicViewer({
+  bookId,
   page,
   totalPages,
   pageMode,
@@ -63,6 +65,14 @@ export function ComicViewer({
     return () => ro.disconnect();
   }, [pageMode]);
 
+  // Drop previous book's decoded pages as soon as the book identity changes.
+  useEffect(() => {
+    clearComicPageCache();
+    setLeftPage(null);
+    setRightPage(null);
+    return () => clearComicPageCache();
+  }, [bookId]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -74,8 +84,8 @@ export function ComicViewer({
 
       try {
         const [nextLeft, nextRight] = await Promise.all([
-          pair.left != null ? getComicPageImage(pair.left) : Promise.resolve(null),
-          pair.right != null ? getComicPageImage(pair.right) : Promise.resolve(null),
+          pair.left != null ? getComicPageImage(bookId, pair.left) : Promise.resolve(null),
+          pair.right != null ? getComicPageImage(bookId, pair.right) : Promise.resolve(null),
         ]);
         if (cancelled) return;
         setLeftPage(nextLeft);
@@ -88,9 +98,15 @@ export function ComicViewer({
         return;
       }
 
-      const keep = comicPrefetchPages(page, totalPages, pageMode);
-      void Promise.all(keep.map((p) => getComicPageImage(p).catch(() => null))).then(() => {
-        if (!cancelled) retainComicPages(keep);
+      // Near pages for flipping + ~10-page warm window (after current page is on screen).
+      const keep = [
+        ...new Set([
+          ...comicPrefetchPages(page, totalPages, pageMode),
+          ...comicInitialWarmPages(page, totalPages, pageMode),
+        ]),
+      ].sort((a, b) => a - b);
+      void Promise.all(keep.map((p) => getComicPageImage(bookId, p).catch(() => null))).then(() => {
+        if (!cancelled) retainComicPages(bookId, keep);
       });
     };
 
@@ -98,15 +114,11 @@ export function ComicViewer({
     return () => {
       cancelled = true;
     };
-  }, [page, pageMode, totalPages, readingDirection]);
-
-  useEffect(() => {
-    return () => clearComicPageCache();
-  }, []);
+  }, [bookId, page, pageMode, totalPages, readingDirection]);
 
   useEffect(() => {
     document.querySelector('.reader-stage')?.scrollTo({ top: 0, left: 0 });
-  }, [zoom, page, pageMode]);
+  }, [bookId, zoom, page, pageMode]);
 
   const leftSize =
     leftPage &&
