@@ -806,6 +806,7 @@ export default function App() {
             )}
             {book.format === 'comic' && (
               <ComicViewer
+                bookId={book.id}
                 page={page}
                 totalPages={book.totalPages}
                 pageMode={settings.pageMode}
