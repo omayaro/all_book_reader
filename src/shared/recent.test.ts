@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  clearRecentBooks,
   markMissingBooks,
   removeRecentBook,
   updateRecentProgress,
@@ -54,6 +55,24 @@ describe('recent', () => {
     const updated = updateRecentProgress(list, 't', 1, 1, 0.5);
     expect(updated[0]?.lastScrollRatio).toBe(0.5);
     expect(updated[0]?.lastByteOffset).toBe(9000);
+  });
+
+  it('clears all recent books so reopen starts at page 1', () => {
+    const list = [
+      book({ id: 'a', path: 'C:\\a.pdf', lastPage: 9, lastByteOffset: 1000 }),
+      book({ id: 'b', path: 'C:\\b.pdf', lastPage: 3 }),
+    ];
+    const cleared = clearRecentBooks();
+    expect(cleared).toEqual([]);
+    const reopened = upsertRecentBook(cleared, {
+      id: 'a',
+      path: 'C:\\a.pdf',
+      format: 'pdf',
+    });
+    expect(reopened).toHaveLength(1);
+    expect(reopened[0]?.lastPage).toBe(1);
+    expect(reopened[0]?.lastByteOffset).toBeUndefined();
+    expect(list).toHaveLength(2);
   });
 
   it('marks missing books', () => {

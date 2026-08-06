@@ -5,6 +5,7 @@ import { mergeSettings } from '../src/shared/settings';
 import {
   markMissingBooks,
   removeRecentBook,
+  clearRecentBooks,
   updateRecentProgress,
   upsertRecentBook,
 } from '../src/shared/recent';
@@ -76,6 +77,12 @@ export class AppStore {
 
   removeRecent(idOrPath: string): RecentBook[] {
     this.state.recentBooks = removeRecentBook(this.state.recentBooks, idOrPath);
+    this.persist();
+    return [...this.state.recentBooks];
+  }
+
+  clearRecent(): RecentBook[] {
+    this.state.recentBooks = clearRecentBooks();
     this.persist();
     return [...this.state.recentBooks];
   }

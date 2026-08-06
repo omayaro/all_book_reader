@@ -90,3 +90,8 @@ export function markMissingBooks(
 export function removeRecentBook(list: RecentBook[], idOrPath: string): RecentBook[] {
   return list.filter((book) => book.id !== idOrPath && book.path !== idOrPath);
 }
+
+/** Remove every recent book (and all saved reading positions). */
+export function clearRecentBooks(): RecentBook[] {
+  return [];
+}

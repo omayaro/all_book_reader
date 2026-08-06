@@ -36,6 +36,7 @@ export interface ElectronApi {
     lastByteOffset?: number,
   ) => Promise<AppState['recentBooks']>;
   removeRecent: (idOrPath: string) => Promise<AppState['recentBooks']>;
+  clearRecent: () => Promise<AppState['recentBooks']>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>;
   checkForUpdates: () => Promise<UpdateCheckResult>;
   openReleasesPage: (url?: string) => Promise<void>;
@@ -63,6 +64,7 @@ const api: ElectronApi = {
       lastByteOffset,
     ),
   removeRecent: (idOrPath) => ipcRenderer.invoke('books:removeRecent', idOrPath),
+  clearRecent: () => ipcRenderer.invoke('books:clearRecent'),
   saveSettings: (partial) => ipcRenderer.invoke('books:saveSettings', partial),
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
   openReleasesPage: (url?: string) => ipcRenderer.invoke('updates:openReleases', url),

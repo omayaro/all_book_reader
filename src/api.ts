@@ -35,6 +35,7 @@ export interface ElectronApi {
     lastByteOffset?: number,
   ) => Promise<AppState['recentBooks']>;
   removeRecent: (idOrPath: string) => Promise<AppState['recentBooks']>;
+  clearRecent: () => Promise<AppState['recentBooks']>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>;
   checkForUpdates: () => Promise<UpdateCheckResult>;
   openReleasesPage: (url?: string) => Promise<void>;

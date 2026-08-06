@@ -453,6 +453,10 @@ function registerIpc(): void {
     return store.removeRecent(idOrPath);
   });
 
+  ipcMain.handle('books:clearRecent', () => {
+    return store.clearRecent();
+  });
+
   ipcMain.handle('books:saveSettings', (_event, partial: Partial<AppSettings>) => {
     return store.saveSettings(partial);
   });
