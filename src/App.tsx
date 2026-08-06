@@ -13,6 +13,7 @@ import { isSupportedBookFile } from './shared/format';
 import { shouldShowUpdateBanner } from './shared/appUpdate';
 import {
   arrowKeyPageDelta,
+  isImageFile,
   isReadingDirection,
   type ReadingDirection,
 } from './shared/comic';
@@ -115,10 +116,10 @@ export default function App() {
 
   const openPath = useCallback(
     async (filePath: string) => {
-      // Folders are allowed (comics); files must be a known extension.
+      // Folders are allowed (comics); files must be a known book or image extension.
       const looksLikeFile = /\.[^./\\]+$/.test(filePath);
-      if (looksLikeFile && !isSupportedBookFile(filePath)) {
-        setStatus('Only .txt, .pdf, .epub, .zip, and .cbz files are supported.');
+      if (looksLikeFile && !isSupportedBookFile(filePath) && !isImageFile(filePath)) {
+        setStatus('Only .txt, .pdf, .epub, .zip, .cbz, and image files are supported.');
         return;
       }
       await flushTxtProgress();
@@ -138,7 +139,7 @@ export default function App() {
       }
       const nextPath = await getApi().resolveSeriesSibling(book.path, delta);
       if (!nextPath) {
-        setStatus(delta > 0 ? 'No next volume found.' : 'No previous volume found.');
+        setStatus(delta > 0 ? 'No next file found.' : 'No previous file found.');
         return;
       }
       const result = await getApi().openPath(nextPath);
@@ -432,7 +433,7 @@ export default function App() {
 
       if (!book) return;
 
-      // PageUp / PageDown: previous / next series volume (filename number ±1).
+      // PageUp / PageDown: previous / next file in the same folder (name order).
       if (event.key === 'PageDown') {
         event.preventDefault();
         void openSeriesSibling(1);

@@ -54,6 +54,15 @@ export function openComicFolder(folderPath: string): ComicSession {
   return session;
 }
 
+/** Open a single image file as a one-page comic (folder-order nav sibling). */
+export function openComicImageFile(filePath: string): ComicSession {
+  if (!isImageFile(filePath)) {
+    throw new Error('Not an image file.');
+  }
+  session = { sourcePath: filePath, entries: [filePath], kind: 'folder' };
+  return session;
+}
+
 export async function readComicPage(index: number): Promise<ArrayBuffer> {
   if (!session) throw new Error('No comic is open.');
   const entry = session.entries[index];
