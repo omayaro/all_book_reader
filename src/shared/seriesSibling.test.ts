@@ -120,8 +120,9 @@ describe('samples folder navigation (optional)', () => {
       .filter((name) => fs.statSync(path.join(samplesDir, name)).isFile())
       .filter((name) => isNavigableBookFileName(name));
 
+    // Local-only fixtures (gitignored). Skip on CI when zips are absent.
     const yolang = entries.filter((name) => name.includes('용랑전') && name.endsWith('.zip'));
-    expect(yolang.length).toBeGreaterThanOrEqual(9);
+    if (yolang.length < 9) return;
 
     const vol05 = yolang.find((name) => name.includes('05.zip'));
     const vol06 = yolang.find((name) => name.includes('06('));
