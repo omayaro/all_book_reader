@@ -1,6 +1,8 @@
 import { getApi } from './api';
 import { normalizeEpubEntryPath } from './shared/epubEntryPath';
 
+export type EpubReadPriority = 'high' | 'low';
+
 const cache = new Map<string, ArrayBuffer>();
 const inflight = new Map<string, Promise<ArrayBuffer>>();
 
@@ -14,7 +16,10 @@ export function getCachedEpubEntry(entryPath: string): ArrayBuffer | undefined {
 }
 
 /** Load (or reuse) one EPUB zip entry via IPC. */
-export function readEpubEntryCached(entryPath: string): Promise<ArrayBuffer> {
+export function readEpubEntryCached(
+  entryPath: string,
+  priority: EpubReadPriority = 'high',
+): Promise<ArrayBuffer> {
   const key = normalizeEpubEntryPath(entryPath);
   if (!key) return Promise.reject(new Error('Missing EPUB entry path'));
   const hit = cache.get(key);
@@ -22,7 +27,7 @@ export function readEpubEntryCached(entryPath: string): Promise<ArrayBuffer> {
   const pending = inflight.get(key);
   if (pending) return pending;
   const request = getApi()
-    .readEpubEntry(key)
+    .readEpubEntry(key, priority)
     .then((buffer) => {
       cache.set(key, buffer);
       inflight.delete(key);

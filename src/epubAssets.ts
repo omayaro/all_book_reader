@@ -1,3 +1,6 @@
+import { isEpubFontPath, normalizeEpubEntryPath } from './shared/epubEntryPath';
+import { readEpubEntryCached } from './epubEntryCache';
+
 type EpubResources = {
   urls: string[];
   cssUrls: string[];
@@ -25,7 +28,7 @@ function contentMentions(content: string, candidate: string | undefined): boolea
 async function ensureAssetUrl(resources: EpubResources, index: number): Promise<void> {
   if (resources.replacementUrls[index]) return;
   const href = resources.urls[index];
-  if (!href) return;
+  if (!href || isEpubFontPath(href)) return;
   const absolute = resources.settings.resolver(href);
   resources.replacementUrls[index] = await resources.createUrl(absolute);
 }
@@ -39,11 +42,10 @@ async function ensureCssUrl(resources: EpubResources, index: number): Promise<vo
   const nested = resources.relativeTo(absolute);
   for (let i = 0; i < resources.urls.length; i += 1) {
     if (i === index) continue;
-    if (resources.cssUrls.includes(resources.urls[i]!)) continue;
-    if (
-      contentMentions(text, resources.urls[i]) ||
-      contentMentions(text, nested[i])
-    ) {
+    const nestedHref = resources.urls[i];
+    if (!nestedHref || resources.cssUrls.includes(nestedHref)) continue;
+    if (isEpubFontPath(nestedHref) || isEpubFontPath(nested[i] ?? '')) continue;
+    if (contentMentions(text, nestedHref) || contentMentions(text, nested[i])) {
       await ensureAssetUrl(resources, i);
     }
   }
@@ -54,7 +56,7 @@ async function ensureCssUrl(resources: EpubResources, index: number): Promise<vo
 
 /**
  * Create blob URLs for CSS/images referenced by this chapter, then rewrite the HTML.
- * Avoids epub.js' full-book replacements() which would fetch every asset before first paint.
+ * Fonts are skipped here so a 20–30MB font pack cannot block first paint.
  */
 export async function rewriteSectionAssets(
   resources: unknown,
@@ -66,7 +68,9 @@ export async function rewriteSectionAssets(
   const relative = res.relativeTo(sectionUrl);
   const needed: number[] = [];
   for (let i = 0; i < res.urls.length; i += 1) {
-    if (contentMentions(html, res.urls[i]) || contentMentions(html, relative[i])) {
+    const href = res.urls[i];
+    if (href && isEpubFontPath(href)) continue;
+    if (contentMentions(html, href) || contentMentions(html, relative[i])) {
       needed.push(i);
     }
   }
@@ -79,4 +83,36 @@ export async function rewriteSectionAssets(
     await ensureCssUrl(res, i);
   }
   return res.substitute(html, sectionUrl);
+}
+
+function fontMime(entryPath: string): string {
+  const base = entryPath.split('/').pop() ?? entryPath;
+  const ext = base.includes('.') ? base.slice(base.lastIndexOf('.') + 1).toLowerCase() : '';
+  if (ext === 'woff2') return 'font/woff2';
+  if (ext === 'woff') return 'font/woff';
+  if (ext === 'otf') return 'font/otf';
+  return 'font/ttf';
+}
+
+function fontFamilyFromPath(entryPath: string): string {
+  const base = (entryPath.split('/').pop() ?? entryPath).replace(/\.[^.]+$/, '');
+  return base || 'Embedded';
+}
+
+/** Load embedded fonts after first paint and return a stylesheet blob URL. */
+export async function loadEpubFontFaceCss(resources: unknown): Promise<string | null> {
+  const res = resources as EpubResources;
+  if (!res?.urls?.length) return null;
+  const fonts = [...new Set(res.urls.filter(isEpubFontPath))];
+  if (fonts.length === 0) return null;
+  const rules: string[] = [];
+  for (const href of fonts) {
+    const absolute = res.settings.resolver(href);
+    const entryPath = normalizeEpubEntryPath(absolute);
+    const buffer = await readEpubEntryCached(entryPath, 'low');
+    const url = URL.createObjectURL(new Blob([new Uint8Array(buffer)], { type: fontMime(entryPath) }));
+    const family = fontFamilyFromPath(entryPath);
+    rules.push(`@font-face { font-family: "${family}"; src: url("${url}"); }`);
+  }
+  return URL.createObjectURL(new Blob([rules.join('\n')], { type: 'text/css' }));
 }

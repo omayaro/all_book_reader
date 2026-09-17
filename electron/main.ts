@@ -463,12 +463,15 @@ function registerIpc(): void {
     return readComicPage(index);
   });
 
-  ipcMain.handle('epub:readEntry', async (_event, entryPath: string) => {
-    if (typeof entryPath !== 'string' || !entryPath) {
-      throw new Error('Missing EPUB entry path.');
-    }
-    return readEpubEntry(entryPath);
-  });
+  ipcMain.handle(
+    'epub:readEntry',
+    async (_event, entryPath: string, priority?: 'high' | 'low') => {
+      if (typeof entryPath !== 'string' || !entryPath) {
+        throw new Error('Missing EPUB entry path.');
+      }
+      return readEpubEntry(entryPath, priority === 'low' ? 'low' : 'high');
+    },
+  );
 
   ipcMain.handle('txt:readPage', (_event, page: number) => {
     return readTxtPage(page);

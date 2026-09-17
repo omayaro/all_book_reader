@@ -17,3 +17,10 @@ export function epubResumeSpineIndex(
   const ratio = (page - 1) / Math.max(1, total - 1);
   return Math.min(spineLength - 1, Math.round(ratio * (spineLength - 1)));
 }
+
+/** True when saved totalPages is from locations.generate, not temporary spine length. */
+export function epubSavedTotalIsLocationMap(savedTotalPages: number, spineLength: number): boolean {
+  const spine = Math.max(1, Math.floor(spineLength) || 1);
+  const saved = Math.max(0, Math.floor(savedTotalPages) || 0);
+  return saved > spine * 2;
+}

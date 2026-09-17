@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { epubResumeSpineIndex } from './epubResume';
+import { epubResumeSpineIndex, epubSavedTotalIsLocationMap } from './epubResume';
 
 describe('epubResumeSpineIndex', () => {
   it('opens the first spine item when lastPage is 1', () => {
@@ -14,5 +14,16 @@ describe('epubResumeSpineIndex', () => {
 
   it('does not start at chapter 1 when lastPage > 1', () => {
     expect(epubResumeSpineIndex(50, 200, 10)).toBeGreaterThan(0);
+  });
+});
+
+describe('epubSavedTotalIsLocationMap', () => {
+  it('treats spine-sized totals as temporary', () => {
+    expect(epubSavedTotalIsLocationMap(69, 69)).toBe(false);
+    expect(epubSavedTotalIsLocationMap(1, 12)).toBe(false);
+  });
+
+  it('treats a much larger total as generated locations', () => {
+    expect(epubSavedTotalIsLocationMap(800, 69)).toBe(true);
   });
 });

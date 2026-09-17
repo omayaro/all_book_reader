@@ -3,10 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { crc32 } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
+import { isEpubFontPath, resolveZipPath } from './epubEntryPath';
+import { epubPrefetchSpine } from './epubPrefetch';
 import {
   clearEpubSession,
   openEpubArchive,
   readEpubEntry,
+  type EpubSession,
 } from '../../electron/epubSession';
 
 function createStoreZip(files: Record<string, string | Uint8Array>): Buffer {
@@ -136,5 +139,77 @@ describe('epubSession', () => {
 
     const first = await readEpubEntry(opened.spineHrefs[0]!);
     expect(new TextDecoder().decode(first)).toContain('UNIQUE_CH1');
+  });
+});
+
+const OPEN_BUDGET_MS = 1000;
+
+function findFiveSecondRuleSample(): string | null {
+  const dir = path.resolve('samples');
+  if (!fs.existsSync(dir)) return null;
+  const names = fs.readdirSync(dir);
+  const match =
+    names.find((name) => /5초|5-second|5sec/i.test(name) && name.toLowerCase().endsWith('.epub')) ??
+    names.find(
+      (name) => name.toLowerCase().endsWith('.epub') && !name.toLowerCase().includes('frankenstein'),
+    );
+  return match ? path.join(dir, match) : null;
+}
+
+async function readPaintAssets(session: EpubSession, spineIndex: number): Promise<void> {
+  const href = session.spineHrefs[spineIndex];
+  if (!href) throw new Error(`Missing spine item ${spineIndex}`);
+  const html = new TextDecoder().decode(await readEpubEntry(href, 'high'));
+  for (const entry of session.entries) {
+    if (entry.toLowerCase().endsWith('.css')) await readEpubEntry(entry, 'high');
+  }
+  const refs = [...html.matchAll(/\b(?:src|href)=["']([^"']+)["']/gi)].map((match) => match[1]!);
+  for (const src of refs) {
+    if (/^[a-z]+:/i.test(src)) continue;
+    const resolved = resolveZipPath(href, src);
+    if (isEpubFontPath(resolved)) continue;
+    try {
+      await readEpubEntry(resolved, 'high');
+    } catch {
+      /* optional */
+    }
+  }
+}
+
+describe('epub 5-second-rule sample open budget', () => {
+  const sample = findFiveSecondRuleSample();
+
+  afterEach(() => {
+    clearEpubSession();
+  });
+
+  it.skipIf(!sample)('opens the first chapter (html+css+images, no fonts) within 1s', async () => {
+    const t0 = Date.now();
+    const opened = await openEpubArchive(sample!);
+    expect(opened.spineHrefs.length).toBeGreaterThan(1);
+    await readPaintAssets(opened, 0);
+    expect(Date.now() - t0).toBeLessThan(OPEN_BUDGET_MS);
+  });
+
+  it.skipIf(!sample)('reopens at the end and reads the previous chapter within 1s', async () => {
+    const t0 = Date.now();
+    const opened = await openEpubArchive(sample!);
+    const last = opened.spineHrefs.length - 1;
+    await readPaintAssets(opened, last);
+    for (const index of epubPrefetchSpine(last, opened.spineHrefs.length, 1)) {
+      if (index !== last) await readPaintAssets(opened, index);
+    }
+    expect(Date.now() - t0).toBeLessThan(OPEN_BUDGET_MS);
+  });
+
+  it.skipIf(!sample)('reopens in the middle and reads neighbors within 1s', async () => {
+    const t0 = Date.now();
+    const opened = await openEpubArchive(sample!);
+    const mid = Math.floor(opened.spineHrefs.length / 2);
+    await readPaintAssets(opened, mid);
+    for (const index of epubPrefetchSpine(mid, opened.spineHrefs.length, 1)) {
+      if (index !== mid) await readPaintAssets(opened, index);
+    }
+    expect(Date.now() - t0).toBeLessThan(OPEN_BUDGET_MS);
   });
 });

@@ -3,6 +3,8 @@ import type { Entry, ZipFile } from 'yauzl';
 import { normalizeEpubEntryPath } from '../src/shared/epubEntryPath';
 import { parseContainerPackagePath, parseOpfSpineHrefs } from '../src/shared/epubPackage';
 
+export type EpubReadPriority = 'high' | 'low';
+
 export interface EpubSession {
   sourcePath: string;
   entries: string[];
@@ -12,14 +14,25 @@ export interface EpubSession {
   zipEntryByName: Map<string, Entry>;
 }
 
+interface ZipReadJob {
+  entry: Entry;
+  priority: EpubReadPriority;
+  resolve: (buf: Buffer) => void;
+  reject: (error: unknown) => void;
+}
+
 let session: EpubSession | null = null;
-/** yauzl allows only one openReadStream at a time per zipfile. */
-let zipReadChain: Promise<unknown> = Promise.resolve();
+const zipJobs: ZipReadJob[] = [];
+let zipPumping = false;
 
 export function clearEpubSession(): void {
   const zipfile = session?.zipfile;
   session = null;
-  zipReadChain = Promise.resolve();
+  const pending = zipJobs.splice(0);
+  zipPumping = false;
+  for (const job of pending) {
+    job.reject(new Error('EPUB session closed.'));
+  }
   if (zipfile) {
     try {
       zipfile.close();
@@ -100,19 +113,50 @@ function lookupEntry(map: Map<string, Entry>, rawPath: string): Entry | undefine
   return map.get(name) ?? map.get(name.toLowerCase());
 }
 
+function enqueueZipRead(entry: Entry, priority: EpubReadPriority): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const job: ZipReadJob = { entry, priority, resolve, reject };
+    if (priority === 'high') {
+      const firstLow = zipJobs.findIndex((item) => item.priority === 'low');
+      if (firstLow === -1) zipJobs.push(job);
+      else zipJobs.splice(firstLow, 0, job);
+    } else {
+      zipJobs.push(job);
+    }
+    void pumpZipReads();
+  });
+}
+
+async function pumpZipReads(): Promise<void> {
+  if (zipPumping) return;
+  zipPumping = true;
+  while (session && zipJobs.length > 0) {
+    const job = zipJobs.shift();
+    if (!job) break;
+    const zipfile = session.zipfile;
+    try {
+      const buf = await readZipEntryBuffer(zipfile, job.entry);
+      job.resolve(buf);
+    } catch (error) {
+      job.reject(error);
+    }
+  }
+  zipPumping = false;
+  if (session && zipJobs.length > 0) void pumpZipReads();
+}
+
 async function readNamedEntry(
   zipfile: ZipFile,
   map: Map<string, Entry>,
   rawPath: string,
+  priority: EpubReadPriority,
 ): Promise<Buffer> {
   const entry = lookupEntry(map, rawPath);
   if (!entry) throw new Error(`Missing EPUB entry: ${rawPath}`);
-  const read = zipReadChain.then(() => readZipEntryBuffer(zipfile, entry));
-  zipReadChain = read.then(
-    () => undefined,
-    () => undefined,
-  );
-  return read;
+  if (!session || session.zipfile !== zipfile) {
+    return readZipEntryBuffer(zipfile, entry);
+  }
+  return enqueueZipRead(entry, priority);
 }
 
 /**
@@ -134,39 +178,42 @@ export async function openEpubArchive(filePath: string): Promise<EpubSession> {
   }
 
   const zipEntryByName = buildEntryMap(listed);
-  zipReadChain = Promise.resolve();
+  zipJobs.length = 0;
+  zipPumping = false;
+
+  const opened: EpubSession = {
+    sourcePath: filePath,
+    entries: [],
+    spineHrefs: [],
+    packagePath: '',
+    zipfile,
+    zipEntryByName,
+  };
+  session = opened;
 
   try {
-    const container = await readNamedEntry(zipfile, zipEntryByName, 'META-INF/container.xml');
+    const container = await readNamedEntry(zipfile, zipEntryByName, 'META-INF/container.xml', 'high');
     const packagePath = parseContainerPackagePath(container.toString('utf8'));
-    const opf = await readNamedEntry(zipfile, zipEntryByName, packagePath);
+    const opf = await readNamedEntry(zipfile, zipEntryByName, packagePath, 'high');
     const spineHrefs = parseOpfSpineHrefs(opf.toString('utf8'), packagePath);
     const entries = [...new Set(listed.map((entry) => normalizeEpubEntryPath(entry.fileName)))].filter(
       Boolean,
     );
-
-    session = {
-      sourcePath: filePath,
-      entries,
-      spineHrefs,
-      packagePath,
-      zipfile,
-      zipEntryByName,
-    };
-    return session;
+    opened.entries = entries;
+    opened.spineHrefs = spineHrefs;
+    opened.packagePath = packagePath;
+    return opened;
   } catch (error) {
-    try {
-      zipfile.close();
-    } catch {
-      /* ignore */
-    }
-    zipReadChain = Promise.resolve();
+    clearEpubSession();
     throw error;
   }
 }
 
-export async function readEpubEntry(entryPath: string): Promise<ArrayBuffer> {
+export async function readEpubEntry(
+  entryPath: string,
+  priority: EpubReadPriority = 'high',
+): Promise<ArrayBuffer> {
   if (!session) throw new Error('No EPUB is open.');
-  const buf = await readNamedEntry(session.zipfile, session.zipEntryByName, entryPath);
+  const buf = await readNamedEntry(session.zipfile, session.zipEntryByName, entryPath, priority);
   return toArrayBuffer(buf);
 }

@@ -37,3 +37,12 @@ export function resolveZipPath(fromFile: string, href: string): string {
   }
   return parts.join('/');
 }
+
+const FONT_EXT = /\.(ttf|otf|woff2?|eot)$/i;
+
+/** Embedded font files must not block first paint (often tens of MB). */
+export function isEpubFontPath(href: string): boolean {
+  const path = normalizeEpubEntryPath(href);
+  const base = path.split('/').pop() ?? path;
+  return FONT_EXT.test(base);
+}
