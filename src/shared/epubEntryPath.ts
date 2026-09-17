@@ -46,3 +46,61 @@ export function isEpubFontPath(href: string): boolean {
   const base = path.split('/').pop() ?? path;
   return FONT_EXT.test(base);
 }
+
+/** POSIX relative path from a zip file to another zip file. */
+export function posixRelativeFromFile(fromFile: string, toFile: string): string {
+  const fromNorm = normalizeEpubEntryPath(fromFile);
+  const toNorm = normalizeEpubEntryPath(toFile);
+  const slash = fromNorm.lastIndexOf('/');
+  const fromDir = slash >= 0 ? fromNorm.slice(0, slash) : '';
+  const fromParts = fromDir ? fromDir.split('/') : [];
+  const toParts = toNorm.split('/').filter(Boolean);
+  let i = 0;
+  while (i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) {
+    i += 1;
+  }
+  const ups = fromParts.length - i;
+  const down = toParts.slice(i);
+  if (ups === 0 && down.length === 0) {
+    const name = toNorm.split('/').pop() ?? toNorm;
+    return name;
+  }
+  return [...Array.from({ length: ups }, () => '..'), ...down].join('/');
+}
+
+function hrefVariants(sectionPath: string, href: string): string[] {
+  const abs = normalizeEpubEntryPath(href);
+  const rel = posixRelativeFromFile(sectionPath, abs);
+  const variants = [href, abs, rel, `./${rel}`];
+  try {
+    variants.push(decodeURIComponent(href));
+  } catch {
+    /* ignore */
+  }
+  try {
+    variants.push(decodeURIComponent(rel));
+  } catch {
+    /* ignore */
+  }
+  return [...new Set(variants.filter(Boolean))].sort((a, b) => b.length - a.length);
+}
+
+/** Replace chapter-relative (and absolute) asset hrefs with blob URLs. */
+export function applyEpubAssetReplacements(
+  content: string,
+  sectionPath: string,
+  replacements: Array<{ href: string; blobUrl: string }>,
+): string {
+  let next = content;
+  const sorted = [...replacements]
+    .filter((item) => item.href && item.blobUrl)
+    .sort((a, b) => b.href.length - a.href.length);
+  for (const { href, blobUrl } of sorted) {
+    for (const variant of hrefVariants(sectionPath, href)) {
+      if (variant && next.includes(variant)) {
+        next = next.split(variant).join(blobUrl);
+      }
+    }
+  }
+  return next;
+}

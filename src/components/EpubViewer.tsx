@@ -190,35 +190,42 @@ export function EpubViewer({
     onNavigatorReadyRef.current?.(navigator);
 
     const rewriteHook = (output: string, section: { url: string; output: string }) => {
-      return rewriteSectionAssets(book.resources, section.output || output, section.url).then(
-        (next) => {
+      return rewriteSectionAssets(book.resources, section.output || output, section.url)
+        .then((next) => {
           section.output = next;
-        },
-      );
+        })
+        .catch((error: unknown) => {
+          console.info('[epub] rewrite failed', error);
+          section.output = output;
+        });
     };
     book.spine.hooks.serialize.register(rewriteHook);
 
-    void book.ready.then(async () => {
-      if (cancelled) return;
-      const urls = linearSpineUrls(book);
-      const spineIndex = epubResumeSpineIndex(page, savedTotalRef.current, urls.length);
-      const target = urls[spineIndex] ?? urls[0];
-      await rendition.display(target || undefined);
-      if (cancelled) return;
-      console.info(
-        `[epub] first display ${Date.now() - openedAt}ms spine=${spineIndex + 1}/${urls.length || 1}`,
-      );
-      const reportedTotal = Math.max(1, savedTotalRef.current, urls.length || 1);
-      syncedPageRef.current = page;
-      onPageChange(page, reportedTotal);
-      prefetchSpine(book, spineIndex);
-      scheduleLocationGenerate();
-      void loadEpubFontFaceCss(book.resources).then((cssUrl) => {
-        if (cancelled || !cssUrl) return;
-        fontCssUrl = cssUrl;
-        applyFontCss(cssUrl);
+    void book.ready
+      .then(async () => {
+        if (cancelled) return;
+        const urls = linearSpineUrls(book);
+        const spineIndex = epubResumeSpineIndex(page, savedTotalRef.current, urls.length);
+        const target = urls[spineIndex] ?? urls[0];
+        await rendition.display(target || undefined);
+        if (cancelled) return;
+        console.info(
+          `[epub] first display ${Date.now() - openedAt}ms spine=${spineIndex + 1}/${urls.length || 1}`,
+        );
+        const reportedTotal = Math.max(1, savedTotalRef.current, urls.length || 1);
+        syncedPageRef.current = page;
+        onPageChange(page, reportedTotal);
+        prefetchSpine(book, spineIndex);
+        scheduleLocationGenerate();
+        void loadEpubFontFaceCss(book.resources).then((cssUrl) => {
+          if (cancelled || !cssUrl) return;
+          fontCssUrl = cssUrl;
+          applyFontCss(cssUrl);
+        });
+      })
+      .catch((error: unknown) => {
+        console.info('[epub] book.ready failed', error);
       });
-    });
 
     rendition.on('rendered', () => {
       if (fontCssUrl) applyFontCss(fontCssUrl);

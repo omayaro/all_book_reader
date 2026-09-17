@@ -1,18 +1,25 @@
-import { isEpubFontPath, normalizeEpubEntryPath } from './shared/epubEntryPath';
+import {
+  applyEpubAssetReplacements,
+  isEpubFontPath,
+  normalizeEpubEntryPath,
+  posixRelativeFromFile,
+} from './shared/epubEntryPath';
 import { readEpubEntryCached } from './epubEntryCache';
 
 type EpubResources = {
   urls: string[];
   cssUrls: string[];
   replacementUrls: string[];
-  relativeTo: (absolute: string) => string[];
   createUrl: (url: string) => Promise<string>;
-  substitute: (content: string, url?: string) => string;
   settings: {
     resolver: (href: string, absolute?: boolean) => string;
     request: (url: string, type?: string) => Promise<unknown>;
   };
 };
+
+function zipPathOf(resources: EpubResources, href: string): string {
+  return normalizeEpubEntryPath(resources.settings.resolver(href));
+}
 
 function contentMentions(content: string, candidate: string | undefined): boolean {
   if (!candidate) return false;
@@ -25,6 +32,17 @@ function contentMentions(content: string, candidate: string | undefined): boolea
   }
 }
 
+function mentionsAsset(content: string, sectionPath: string, href: string): boolean {
+  const abs = normalizeEpubEntryPath(href);
+  const rel = posixRelativeFromFile(sectionPath, abs);
+  return (
+    contentMentions(content, href) ||
+    contentMentions(content, abs) ||
+    contentMentions(content, rel) ||
+    contentMentions(content, `./${rel}`)
+  );
+}
+
 async function ensureAssetUrl(resources: EpubResources, index: number): Promise<void> {
   if (resources.replacementUrls[index]) return;
   const href = resources.urls[index];
@@ -33,30 +51,34 @@ async function ensureAssetUrl(resources: EpubResources, index: number): Promise<
   resources.replacementUrls[index] = await resources.createUrl(absolute);
 }
 
-async function ensureCssUrl(resources: EpubResources, index: number): Promise<void> {
+async function ensureCssUrl(resources: EpubResources, index: number, cssZipPath: string): Promise<void> {
   if (resources.replacementUrls[index]) return;
   const href = resources.urls[index];
   if (!href) return;
   const absolute = resources.settings.resolver(href);
   const text = (await resources.settings.request(absolute, 'text')) as string;
-  const nested = resources.relativeTo(absolute);
+  const nested: Array<{ href: string; blobUrl: string }> = [];
   for (let i = 0; i < resources.urls.length; i += 1) {
     if (i === index) continue;
     const nestedHref = resources.urls[i];
     if (!nestedHref || resources.cssUrls.includes(nestedHref)) continue;
-    if (isEpubFontPath(nestedHref) || isEpubFontPath(nested[i] ?? '')) continue;
-    if (contentMentions(text, nestedHref) || contentMentions(text, nested[i])) {
-      await ensureAssetUrl(resources, i);
+    if (isEpubFontPath(nestedHref)) continue;
+    const nestedAbs = zipPathOf(resources, nestedHref);
+    if (!mentionsAsset(text, cssZipPath, nestedAbs) && !contentMentions(text, nestedHref)) {
+      continue;
     }
+    await ensureAssetUrl(resources, i);
+    const blobUrl = resources.replacementUrls[i];
+    if (blobUrl) nested.push({ href: nestedAbs, blobUrl });
   }
-  const rewritten = resources.substitute(text, absolute);
+  const rewritten = applyEpubAssetReplacements(text, cssZipPath, nested);
   const blob = new Blob([rewritten], { type: 'text/css' });
   resources.replacementUrls[index] = URL.createObjectURL(blob);
 }
 
 /**
  * Create blob URLs for CSS/images referenced by this chapter, then rewrite the HTML.
- * Fonts are skipped here so a 20–30MB font pack cannot block first paint.
+ * Uses zip-relative hrefs (not epub.js relativeTo) so Windows / https origins still match.
  */
 export async function rewriteSectionAssets(
   resources: unknown,
@@ -65,12 +87,13 @@ export async function rewriteSectionAssets(
 ): Promise<string> {
   const res = resources as EpubResources;
   if (!res?.urls?.length) return html;
-  const relative = res.relativeTo(sectionUrl);
+  const sectionPath = normalizeEpubEntryPath(sectionUrl);
   const needed: number[] = [];
   for (let i = 0; i < res.urls.length; i += 1) {
     const href = res.urls[i];
-    if (href && isEpubFontPath(href)) continue;
-    if (contentMentions(html, href) || contentMentions(html, relative[i])) {
+    if (!href || isEpubFontPath(href)) continue;
+    const abs = zipPathOf(res, href);
+    if (mentionsAsset(html, sectionPath, abs) || contentMentions(html, href)) {
       needed.push(i);
     }
   }
@@ -80,9 +103,17 @@ export async function rewriteSectionAssets(
     await ensureAssetUrl(res, i);
   }
   for (const i of cssNeeded) {
-    await ensureCssUrl(res, i);
+    await ensureCssUrl(res, i, zipPathOf(res, res.urls[i]!));
   }
-  return res.substitute(html, sectionUrl);
+  const replacements = needed
+    .map((i) => {
+      const href = res.urls[i];
+      const blobUrl = res.replacementUrls[i];
+      if (!href || !blobUrl) return null;
+      return { href: zipPathOf(res, href), blobUrl };
+    })
+    .filter((item): item is { href: string; blobUrl: string } => item != null);
+  return applyEpubAssetReplacements(html, sectionPath, replacements);
 }
 
 function fontMime(entryPath: string): string {

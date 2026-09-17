@@ -71,7 +71,7 @@ export async function epubIpcRequest(
   const buffer = await readEpubEntryCached(entryPath);
 
   if (kind === 'blob') {
-    return new Blob([buffer], { type: mimeForExt(ext) });
+    return new Blob([new Uint8Array(buffer)], { type: mimeForExt(ext) });
   }
   if (kind === 'binary' || kind === 'arraybuffer') {
     return buffer;
@@ -87,7 +87,9 @@ export async function epubIpcRequest(
     return parseXml(text, 'application/xhtml+xml');
   }
   if (kind === 'html' || kind === 'htm') {
-    return parseXml(text, 'text/html');
+    const looksXml =
+      text.trimStart().startsWith('<?xml') || /xmlns=["']http:\/\/www\.w3\.org\/1999\/xhtml["']/.test(text);
+    return parseXml(text, looksXml ? 'application/xhtml+xml' : 'text/html');
   }
   if (kind === 'text' || kind === 'css') {
     return text;
