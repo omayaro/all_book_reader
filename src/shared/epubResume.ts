@@ -18,6 +18,20 @@ export function epubResumeSpineIndex(
   return Math.min(spineLength - 1, Math.round(ratio * (spineLength - 1)));
 }
 
+/** Inverse of epubResumeSpineIndex: persist a 1-based page from the visible spine. */
+export function epubPageFromSpineIndex(
+  spineIndex: number,
+  totalPages: number,
+  spineLength: number,
+): number {
+  if (spineLength < 1) return 1;
+  const index = Math.min(spineLength - 1, Math.max(0, Math.floor(spineIndex)));
+  const total = Math.max(1, Math.floor(totalPages) || 1);
+  if (total <= 1 || spineLength === 1) return 1;
+  if (total === spineLength) return index + 1;
+  return Math.min(total, Math.round((index / (spineLength - 1)) * (total - 1)) + 1);
+}
+
 /** True when saved totalPages is from locations.generate, not temporary spine length. */
 export function epubSavedTotalIsLocationMap(savedTotalPages: number, spineLength: number): boolean {
   const spine = Math.max(1, Math.floor(spineLength) || 1);

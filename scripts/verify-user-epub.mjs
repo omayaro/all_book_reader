@@ -96,6 +96,9 @@ function attachCdp(wsUrl) {
         .join(' ');
       consoles.push(text);
     }
+    if (msg.method === 'Log.entryAdded') {
+      consoles.push(String(msg.params?.entry?.text || msg.params?.entry?.args || ''));
+    }
     if (msg.method === 'Runtime.exceptionThrown') {
       consoles.push(`EXCEPTION ${msg.params?.exceptionDetails?.text || ''}`);
     }
@@ -141,6 +144,7 @@ async function verifyUi() {
     const candidate = attachCdp(page.webSocketDebuggerUrl);
     await candidate.ready;
     await candidate.send('Runtime.enable');
+    await candidate.send('Log.enable');
     for (let i = 0; i < 20; i += 1) {
       if (await candidate.evaluate('Boolean(window.api)')) {
         session = candidate;
@@ -162,9 +166,11 @@ async function verifyUi() {
     await sleep(250);
   }
 
+  await sleep(400);
   const openedAt = Date.now();
   const openExpr = `window.dispatchEvent(new CustomEvent('abr:open-path', { detail: ${JSON.stringify(epub)} }))`;
   await session.evaluate(openExpr);
+  await session.evaluate(`console.info('hello-verify')`);
 
   let probe = null;
   for (let i = 0; i < 48; i += 1) {
@@ -178,6 +184,11 @@ async function verifyUi() {
         return {
           home: Boolean(document.querySelector('.home')),
           hasViewer: Boolean(document.querySelector('.epub-viewer')),
+          viewerW: document.querySelector('.epub-viewer')?.clientWidth || 0,
+          viewerH: document.querySelector('.epub-viewer')?.clientHeight || 0,
+          viewerHTML: (document.querySelector('.epub-viewer')?.innerHTML || '').slice(0, 240),
+          pageInput: document.querySelector('.page-input')?.value || '',
+          allIframes: document.querySelectorAll('iframe').length,
           status: document.querySelector('.status')?.textContent || '',
           iframeCount: document.querySelectorAll('.epub-viewer iframe').length,
           iframeW: iframe ? iframe.clientWidth : 0,
@@ -195,14 +206,65 @@ async function verifyUi() {
       })()
     `);
     if (probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5)) break;
-    if (probe?.home && !probe?.hasViewer) {
-      await session.evaluate(openExpr);
-    }
     await sleep(250);
   }
   const uiMs = Date.now() - openedAt;
   log('ui', { uiMs, probe, consoles: session.consoles.slice(-30) });
 
+  const painted = Boolean(probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5));
+  if (!painted) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`EPUB UI did not paint: ${JSON.stringify(probe)}`);
+  }
+  if (uiMs > 3000) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`EPUB UI paint too slow: ${uiMs}ms`);
+  }
+
+  for (let i = 0; i < 8; i += 1) {
+    await session.evaluate(`
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        code: 'ArrowRight',
+        bubbles: true,
+        cancelable: true,
+      }))
+    `);
+    await sleep(120);
+  }
+  await sleep(800);
+  const afterTurn = await session.evaluate(`
+    window.api.getState().then((state) => {
+      const book = (state.recentBooks || []).find((item) => String(item.path || '').toLowerCase().includes('epub'))
+        || (state.recentBooks || [])[0];
+      return { page: book?.lastPage, total: book?.totalPages, path: book?.path || '' };
+    })
+  `);
+  log('afterTurn', afterTurn);
+  if (!(afterTurn?.page > 1)) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`page turns did not advance: ${JSON.stringify(afterTurn)}`);
+  }
+  await session.evaluate(`window.dispatchEvent(new Event('beforeunload'))`);
+  await sleep(400);
   session.ws.close();
   try {
     if (child.pid) process.kill(child.pid);
@@ -210,13 +272,72 @@ async function verifyUi() {
     /* ignore */
   }
   killApp();
+  await sleep(500);
 
-  const painted = Boolean(probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5));
-  if (!painted) {
-    throw new Error(`EPUB UI did not paint: ${JSON.stringify(probe)}`);
+  const child2 = spawn(exe, [`--remote-debugging-port=${CDP_PORT}`], {
+    cwd: path.dirname(exe),
+    detached: false,
+    stdio: 'ignore',
+  });
+  const pages2 = await waitForCdpPages();
+  let session2 = null;
+  for (const page of pages2) {
+    const candidate = attachCdp(page.webSocketDebuggerUrl);
+    await candidate.ready;
+    await candidate.send('Runtime.enable');
+    await candidate.send('Log.enable');
+    for (let i = 0; i < 20; i += 1) {
+      if (await candidate.evaluate('Boolean(window.api)')) {
+        session2 = candidate;
+        break;
+      }
+      await sleep(250);
+    }
+    if (session2) break;
+    candidate.ws.close();
   }
-  if (uiMs > 3000) {
-    throw new Error(`EPUB UI paint too slow: ${uiMs}ms`);
+  if (!session2) {
+    killApp();
+    throw new Error('window.api never appeared on reopen');
+  }
+  for (let i = 0; i < 40; i += 1) {
+    if (await session2.evaluate(`Boolean(document.querySelector('.home') || document.querySelector('.reader'))`)) {
+      break;
+    }
+    await sleep(250);
+  }
+  await session2.evaluate(openExpr);
+  let resumeProbe = null;
+  for (let i = 0; i < 48; i += 1) {
+    resumeProbe = await session2.evaluate(`
+      window.api.getState().then((state) => {
+        const book = (state.recentBooks || []).find((item) => String(item.path || '').includes('5'))
+          || (state.recentBooks || [])[0];
+        const iframe = document.querySelector('.epub-viewer iframe');
+        const doc = iframe && iframe.contentDocument;
+        return {
+          page: book?.lastPage || 0,
+          total: book?.totalPages || 0,
+          hasViewer: Boolean(document.querySelector('.epub-viewer')),
+          iframeCount: document.querySelectorAll('.epub-viewer iframe').length,
+          bodyText: doc?.body ? (doc.body.innerText || '').trim().slice(0, 80) : '',
+        };
+      })
+    `);
+    if (resumeProbe?.hasViewer && resumeProbe.page > 1) break;
+    await sleep(250);
+  }
+  const resumeLog = session2.consoles.find((line) => String(line).includes('[epub] first display'));
+  log('resume', { resumeProbe, resumeLog });
+  session2.ws.close();
+  try {
+    if (child2.pid) process.kill(child2.pid);
+  } catch {
+    /* ignore */
+  }
+  killApp();
+  if (!(resumeProbe?.page > 1)) {
+    throw new Error(`EPUB did not resume away from page 1: ${JSON.stringify(resumeProbe)}`);
   }
 }
 
