@@ -1,5 +1,21 @@
+/** Custom scheme registered in Electron so iframe img/css can load zip entries. */
+export const EPUB_REQUEST_SCHEME = 'abr-epub';
+
 /** Origin used by the renderer custom request so epub.js can resolve relative hrefs. */
-export const EPUB_REQUEST_ORIGIN = 'https://abr-epub.local';
+export const EPUB_REQUEST_ORIGIN = `${EPUB_REQUEST_SCHEME}://book`;
+
+function collapseDotSegments(path: string): string {
+  const parts: string[] = [];
+  for (const part of path.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  return parts.join('/');
+}
 
 /** Strip URL origin, query, hash, and leading slashes to a zip entry path. */
 export function normalizeEpubEntryPath(raw: string): string {
@@ -17,7 +33,7 @@ export function normalizeEpubEntryPath(raw: string): string {
   }
   value = value.replace(/^\/+/, '');
   const cut = value.split('#')[0] ?? value;
-  return (cut.split('?')[0] ?? cut).replace(/^\/+/, '');
+  return collapseDotSegments((cut.split('?')[0] ?? cut).replace(/^\/+/, ''));
 }
 
 /** Resolve `href` against a zip file path (POSIX, `..` safe). */
@@ -68,10 +84,64 @@ export function posixRelativeFromFile(fromFile: string, toFile: string): string 
   return [...Array.from({ length: ups }, () => '..'), ...down].join('/');
 }
 
+export function mimeForEpubEntry(entryPath: string): string {
+  const base = (normalizeEpubEntryPath(entryPath).split('/').pop() ?? entryPath).toLowerCase();
+  const ext = base.includes('.') ? base.slice(base.lastIndexOf('.') + 1) : '';
+  switch (ext) {
+    case 'css':
+      return 'text/css';
+    case 'js':
+      return 'text/javascript';
+    case 'xhtml':
+    case 'xht':
+      return 'application/xhtml+xml';
+    case 'html':
+    case 'htm':
+      return 'text/html';
+    case 'xml':
+    case 'opf':
+    case 'ncx':
+      return 'text/xml';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'ttf':
+      return 'font/ttf';
+    case 'otf':
+      return 'font/otf';
+    case 'woff':
+      return 'font/woff';
+    case 'woff2':
+      return 'font/woff2';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
 function hrefVariants(sectionPath: string, href: string): string[] {
   const abs = normalizeEpubEntryPath(href);
   const rel = posixRelativeFromFile(sectionPath, abs);
-  const variants = [href, abs, rel, `./${rel}`];
+  const sectionNorm = normalizeEpubEntryPath(sectionPath);
+  const slash = sectionNorm.lastIndexOf('/');
+  const sectionDir = slash >= 0 ? sectionNorm.slice(0, slash) : '';
+  const uncollapsed = sectionDir ? `${sectionDir}/${rel}` : abs;
+  const variants = [
+    href,
+    abs,
+    rel,
+    `./${rel}`,
+    uncollapsed,
+    `${EPUB_REQUEST_ORIGIN}/${abs}`,
+    `${EPUB_REQUEST_ORIGIN}/${uncollapsed}`,
+  ];
   try {
     variants.push(decodeURIComponent(href));
   } catch {

@@ -1,4 +1,4 @@
-import { EPUB_REQUEST_ORIGIN, normalizeEpubEntryPath } from './shared/epubEntryPath';
+import { EPUB_REQUEST_ORIGIN, mimeForEpubEntry, normalizeEpubEntryPath } from './shared/epubEntryPath';
 import { readEpubEntryCached } from './epubEntryCache';
 
 const XML_EXTS = new Set(['xml', 'opf', 'ncx']);
@@ -8,46 +8,6 @@ function extensionOf(entryPath: string): string {
   const dot = base.lastIndexOf('.');
   if (dot <= 0) return '';
   return base.slice(dot + 1).toLowerCase();
-}
-
-function mimeForExt(ext: string): string {
-  switch (ext) {
-    case 'css':
-      return 'text/css';
-    case 'js':
-      return 'text/javascript';
-    case 'xhtml':
-    case 'xht':
-      return 'application/xhtml+xml';
-    case 'html':
-    case 'htm':
-      return 'text/html';
-    case 'xml':
-    case 'opf':
-    case 'ncx':
-      return 'text/xml';
-    case 'svg':
-      return 'image/svg+xml';
-    case 'png':
-      return 'image/png';
-    case 'jpg':
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'gif':
-      return 'image/gif';
-    case 'webp':
-      return 'image/webp';
-    case 'ttf':
-      return 'font/ttf';
-    case 'otf':
-      return 'font/otf';
-    case 'woff':
-      return 'font/woff';
-    case 'woff2':
-      return 'font/woff2';
-    default:
-      return 'application/octet-stream';
-  }
 }
 
 function parseXml(text: string, mime: string): Document {
@@ -71,7 +31,7 @@ export async function epubIpcRequest(
   const buffer = await readEpubEntryCached(entryPath);
 
   if (kind === 'blob') {
-    return new Blob([new Uint8Array(buffer)], { type: mimeForExt(ext) });
+    return new Blob([new Uint8Array(buffer)], { type: mimeForEpubEntry(entryPath) });
   }
   if (kind === 'binary' || kind === 'arraybuffer') {
     return buffer;

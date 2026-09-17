@@ -20,6 +20,12 @@ describe('normalizeEpubEntryPath', () => {
     expect(normalizeEpubEntryPath('OEBPS/My%20Book.xhtml#frag')).toBe('OEBPS/My Book.xhtml');
     expect(normalizeEpubEntryPath('OEBPS/ch.xhtml?x=1')).toBe('OEBPS/ch.xhtml');
   });
+
+  it('collapses parent-directory segments after the origin', () => {
+    expect(
+      normalizeEpubEntryPath(`${EPUB_REQUEST_ORIGIN}/OEBPS/Text/../Images/image-1.jpg`),
+    ).toBe('OEBPS/Images/image-1.jpg');
+  });
 });
 
 describe('isEpubFontPath', () => {
@@ -60,5 +66,14 @@ describe('applyEpubAssetReplacements', () => {
     expect(next).toContain('blob:img');
     expect(next).not.toContain('../Styles/style.css');
     expect(next).not.toContain('../Images/image-1.jpg');
+  });
+
+  it('rewrites origin-prefixed src values to blob URLs, not a mixed origin URL', () => {
+    const html = `<img src="${EPUB_REQUEST_ORIGIN}/OEBPS/Text/../Images/image-1.jpg"/>`;
+    const next = applyEpubAssetReplacements(html, 'OEBPS/Text/page-1.html', [
+      { href: 'OEBPS/Images/image-1.jpg', blobUrl: 'blob:img' },
+    ]);
+    expect(next).toContain('src="blob:img"');
+    expect(next).not.toContain(EPUB_REQUEST_ORIGIN);
   });
 });

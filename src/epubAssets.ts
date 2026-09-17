@@ -1,6 +1,7 @@
 import {
   applyEpubAssetReplacements,
   isEpubFontPath,
+  mimeForEpubEntry,
   normalizeEpubEntryPath,
   posixRelativeFromFile,
 } from './shared/epubEntryPath';
@@ -47,8 +48,11 @@ async function ensureAssetUrl(resources: EpubResources, index: number): Promise<
   if (resources.replacementUrls[index]) return;
   const href = resources.urls[index];
   if (!href || isEpubFontPath(href)) return;
-  const absolute = resources.settings.resolver(href);
-  resources.replacementUrls[index] = await resources.createUrl(absolute);
+  const zipPath = zipPathOf(resources, href);
+  const buffer = await readEpubEntryCached(zipPath, 'high');
+  resources.replacementUrls[index] = URL.createObjectURL(
+    new Blob([new Uint8Array(buffer)], { type: mimeForEpubEntry(zipPath) }),
+  );
 }
 
 async function ensureCssUrl(resources: EpubResources, index: number, cssZipPath: string): Promise<void> {

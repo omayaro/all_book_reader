@@ -392,13 +392,20 @@ export default function App() {
       if (filePath) void openPath(filePath);
       else setStatus('Could not resolve dropped file path.');
     };
+    const onAbrOpen = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const filePath = typeof detail === 'string' ? detail : '';
+      if (filePath) void openPath(filePath);
+    };
     window.addEventListener('dragover', onDragOver);
     window.addEventListener('dragleave', onDragLeave);
     window.addEventListener('drop', onDrop);
+    window.addEventListener('abr:open-path', onAbrOpen);
     return () => {
       window.removeEventListener('dragover', onDragOver);
       window.removeEventListener('dragleave', onDragLeave);
       window.removeEventListener('drop', onDrop);
+      window.removeEventListener('abr:open-path', onAbrOpen);
     };
   }, [openPath]);
 

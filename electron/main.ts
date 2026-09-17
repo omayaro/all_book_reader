@@ -6,6 +6,7 @@ import {
   Menu,
   shell,
 } from 'electron';
+import { installEpubProtocolHandler, registerEpubScheme } from './epubProtocol';
 import fs from 'node:fs';
 import path from 'node:path';
 import { buildBookId } from '../src/shared/bookId';
@@ -565,9 +566,11 @@ function registerIpc(): void {
   });
 }
 
+registerEpubScheme();
 configurePortableUserData();
 
 app.whenReady().then(async () => {
+  installEpubProtocolHandler();
   store = new AppStore(app.getPath('userData'));
 
   // Headless resume check: ABR_E2E_TXT_RESUME=<path> ABR_E2E_TXT_OFFSET=<bytes>

@@ -206,8 +206,7 @@ export function EpubViewer({
         if (cancelled) return;
         const urls = linearSpineUrls(book);
         const spineIndex = epubResumeSpineIndex(page, savedTotalRef.current, urls.length);
-        const target = urls[spineIndex] ?? urls[0];
-        await rendition.display(target || undefined);
+        await rendition.display(spineIndex);
         if (cancelled) return;
         console.info(
           `[epub] first display ${Date.now() - openedAt}ms spine=${spineIndex + 1}/${urls.length || 1}`,
@@ -328,8 +327,7 @@ export function EpubViewer({
       const urls = linearSpineUrls(book);
       const spineIndex = epubResumeSpineIndex(page, savedTotalPages, urls.length);
       syncedPageRef.current = page;
-      const target = urls[spineIndex];
-      if (target) void rendition.display(target);
+      void rendition.display(spineIndex);
       return;
     }
     const target = clampPage(page, locCount);
