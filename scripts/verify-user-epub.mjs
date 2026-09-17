@@ -263,6 +263,31 @@ async function verifyUi() {
     killApp();
     throw new Error(`page turns did not advance: ${JSON.stringify(afterTurn)}`);
   }
+  await sleep(3500);
+  const afterGenerate = await session.evaluate(`
+    window.api.getState().then((state) => {
+      const book = (state.recentBooks || []).find((item) => String(item.path || '').toLowerCase().includes('epub'))
+        || (state.recentBooks || [])[0];
+      const iframe = document.querySelector('.epub-viewer iframe');
+      const doc = iframe && iframe.contentDocument;
+      return {
+        page: book?.lastPage,
+        total: book?.totalPages,
+        bodyText: doc?.body ? (doc.body.innerText || '').trim().slice(0, 80) : '',
+      };
+    })
+  `);
+  log('afterGenerate', { afterGenerate, consoles: session.consoles.filter((line) => String(line).includes('[epub]')).slice(-8) });
+  if (!(afterGenerate?.page > 1)) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`locations.generate reset progress to page 1: ${JSON.stringify(afterGenerate)}`);
+  }
   await session.evaluate(`window.dispatchEvent(new Event('beforeunload'))`);
   await sleep(400);
   session.ws.close();
@@ -328,7 +353,25 @@ async function verifyUi() {
     await sleep(250);
   }
   const resumeLog = session2.consoles.find((line) => String(line).includes('[epub] first display'));
-  log('resume', { resumeProbe, resumeLog });
+  const spineMatch = String(resumeLog || '').match(/spine=(\d+)\//);
+  const resumeSpine = spineMatch ? Number(spineMatch[1]) : 0;
+  log('resume', { resumeProbe, resumeLog, resumeSpine });
+  await sleep(3500);
+  const resumeAfterGenerate = await session2.evaluate(`
+    window.api.getState().then((state) => {
+      const book = (state.recentBooks || []).find((item) => String(item.path || '').includes('5'))
+        || (state.recentBooks || [])[0];
+      const iframe = document.querySelector('.epub-viewer iframe');
+      const doc = iframe && iframe.contentDocument;
+      return {
+        page: book?.lastPage || 0,
+        total: book?.totalPages || 0,
+        bodyText: doc?.body ? (doc.body.innerText || '').trim().slice(0, 80) : '',
+      };
+    })
+  `);
+  const generateLog = session2.consoles.find((line) => String(line).includes('locations.generate'));
+  log('resumeAfterGenerate', { resumeAfterGenerate, generateLog });
   session2.ws.close();
   try {
     if (child2.pid) process.kill(child2.pid);
@@ -338,6 +381,15 @@ async function verifyUi() {
   killApp();
   if (!(resumeProbe?.page > 1)) {
     throw new Error(`EPUB did not resume away from page 1: ${JSON.stringify(resumeProbe)}`);
+  }
+  if (!(resumeSpine > 1)) {
+    throw new Error(`EPUB resume opened cover spine: ${JSON.stringify({ resumeLog, resumeSpine })}`);
+  }
+  if (!(resumeProbe?.bodyText && resumeProbe.bodyText.length > 5)) {
+    throw new Error(`EPUB resume did not show chapter text: ${JSON.stringify(resumeProbe)}`);
+  }
+  if (!(resumeAfterGenerate?.page > 1)) {
+    throw new Error(`EPUB resume lost progress after locations.generate: ${JSON.stringify(resumeAfterGenerate)}`);
   }
 }
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  epubOpeningSpineIndices,
   epubPageFromSpineIndex,
+  epubPersistedPage,
   epubResumeSpineIndex,
   epubSavedTotalIsLocationMap,
 } from './epubResume';
@@ -44,7 +46,26 @@ describe('epubSavedTotalIsLocationMap', () => {
     expect(epubSavedTotalIsLocationMap(1, 12)).toBe(false);
   });
 
-  it('treats a much larger total as generated locations', () => {
+  it('treats a larger generated location count as a location map', () => {
     expect(epubSavedTotalIsLocationMap(800, 69)).toBe(true);
+    expect(epubSavedTotalIsLocationMap(98, 69)).toBe(true);
+  });
+});
+
+describe('epubPersistedPage', () => {
+  it('does not persist page 1 when a later spine is visible', () => {
+    expect(epubPersistedPage(6, 69, 98, 0, 98)).toBe(epubPageFromSpineIndex(6, 98, 69));
+    expect(epubPersistedPage(6, 69, 98, 0, 98)).toBeGreaterThan(1);
+  });
+
+  it('keeps a matching CFI location when it agrees with the spine', () => {
+    expect(epubPersistedPage(0, 69, 98, 0, 98)).toBe(1);
+  });
+});
+
+describe('epubOpeningSpineIndices', () => {
+  it('includes the paired page in two-page mode', () => {
+    expect(epubOpeningSpineIndices(6, false)).toEqual([6]);
+    expect(epubOpeningSpineIndices(6, true)).toEqual([6, 7]);
   });
 });

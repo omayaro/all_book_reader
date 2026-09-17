@@ -36,5 +36,33 @@ export function epubPageFromSpineIndex(
 export function epubSavedTotalIsLocationMap(savedTotalPages: number, spineLength: number): boolean {
   const spine = Math.max(1, Math.floor(spineLength) || 1);
   const saved = Math.max(0, Math.floor(savedTotalPages) || 0);
-  return saved > spine * 2;
+  return saved > spine;
+}
+
+/**
+ * Page number to persist from the visible spine.
+ * Ignores CFI locations that collapse to page 1 while a later chapter is on screen.
+ */
+export function epubPersistedPage(
+  spineIndex: number,
+  spineLength: number,
+  fallbackTotal: number,
+  locationFromCfi?: number,
+  locationTotal?: number,
+): number {
+  const locTotal = Math.max(0, Math.floor(locationTotal || 0));
+  const total = locTotal > 1 ? locTotal : Math.max(1, Math.floor(fallbackTotal) || 1);
+  const spinePage = epubPageFromSpineIndex(spineIndex, total, spineLength);
+  if (locTotal < 1 || locationFromCfi == null || !Number.isFinite(locationFromCfi) || locationFromCfi < 0) {
+    return spinePage;
+  }
+  const cfiPage = clampPage(locationFromCfi + 1, locTotal);
+  if (spineIndex > 0 && cfiPage <= 1) return spinePage;
+  return cfiPage;
+}
+
+/** Spine indices that belong to the first painted spread, not a user page turn. */
+export function epubOpeningSpineIndices(spineIndex: number, twoPage: boolean): number[] {
+  const index = Math.max(0, Math.floor(spineIndex));
+  return twoPage ? [index, index + 1] : [index];
 }
