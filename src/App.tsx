@@ -788,12 +788,14 @@ export default function App() {
                 onSearchDone={setStatus}
               />
             )}
-            {book.format === 'epub' && book.fileData && (
+            {book.format === 'epub' && (
               <EpubViewer
-                data={book.fileData}
+                key={book.id}
+                bookId={book.id}
                 fontSize={settings.fontSize}
                 pageMode={settings.pageMode}
                 page={page}
+                savedTotalPages={book.totalPages}
                 searchQuery={searchQuery}
                 searchDirection={searchDirection}
                 searchNonce={searchNonce}

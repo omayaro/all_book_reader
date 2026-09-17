@@ -29,6 +29,7 @@ import {
   openComicImageFile,
   readComicPage,
 } from './comicSession';
+import { clearEpubSession, openEpubArchive, readEpubEntry } from './epubSession';
 import { clearTxtSession, openTxtSession, readTxtPage } from './txtSession';
 import { AppStore } from './store';
 
@@ -211,6 +212,7 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
   const lastPage = existing?.lastPage ?? 1;
 
   clearComicSession();
+  clearEpubSession();
   clearTxtSession();
 
   if (format === 'comic') {
@@ -286,6 +288,41 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
       lastByteOffset: pageResult.startByte,
     });
     return result;
+  }
+
+  if (format === 'epub') {
+    const tOpen = Date.now();
+    try {
+      const epub = await openEpubArchive(filePath);
+      const spineCount = Math.max(1, epub.spineHrefs.length);
+      const total = existing?.totalPages && existing.totalPages > 1 ? existing.totalPages : spineCount;
+      result.epubEntryCount = epub.entries.length;
+      result.epubSpineCount = epub.spineHrefs.length;
+      result.totalPages = total;
+      result.lastPage = lastPage;
+      store.upsertRecent({
+        id,
+        path: filePath,
+        format,
+        title,
+        lastPage,
+        totalPages: total,
+        lastScrollRatio: existing?.lastScrollRatio,
+        lastByteOffset: existing?.lastByteOffset,
+      });
+      console.info(
+        `[epub] session open ${Date.now() - tOpen}ms entries=${epub.entries.length} spine=${epub.spineHrefs.length}`,
+      );
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to open EPUB.';
+      await dialog.showMessageBox(mainWindow!, {
+        type: 'error',
+        title: 'Could not open EPUB',
+        message,
+      });
+      return null;
+    }
   }
 
   store.upsertRecent({
@@ -418,11 +455,19 @@ function registerIpc(): void {
 
   ipcMain.handle('books:close', () => {
     clearComicSession();
+    clearEpubSession();
     clearTxtSession();
   });
 
   ipcMain.handle('comic:readPage', async (_event, index: number) => {
     return readComicPage(index);
+  });
+
+  ipcMain.handle('epub:readEntry', async (_event, entryPath: string) => {
+    if (typeof entryPath !== 'string' || !entryPath) {
+      throw new Error('Missing EPUB entry path.');
+    }
+    return readEpubEntry(entryPath);
   });
 
   ipcMain.handle('txt:readPage', (_event, page: number) => {

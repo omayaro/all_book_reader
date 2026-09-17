@@ -27,6 +27,7 @@ export interface ElectronApi {
   resolveSeriesSibling: (filePath: string, delta: number) => Promise<string | null>;
   closeBook: () => Promise<void>;
   readComicPage: (index: number) => Promise<ArrayBuffer>;
+  readEpubEntry: (entryPath: string) => Promise<ArrayBuffer>;
   readTxtPage: (page: number) => Promise<TxtPageResult>;
   updateProgress: (
     idOrPath: string,
@@ -53,6 +54,7 @@ const api: ElectronApi = {
     ipcRenderer.invoke('books:resolveSeriesSibling', filePath, delta),
   closeBook: () => ipcRenderer.invoke('books:close'),
   readComicPage: (index: number) => ipcRenderer.invoke('comic:readPage', index),
+  readEpubEntry: (entryPath: string) => ipcRenderer.invoke('epub:readEntry', entryPath),
   readTxtPage: (page) => ipcRenderer.invoke('txt:readPage', page),
   updateProgress: (idOrPath, lastPage, totalPages, lastScrollRatio, lastByteOffset) =>
     ipcRenderer.invoke(

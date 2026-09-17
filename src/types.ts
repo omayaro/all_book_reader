@@ -61,6 +61,10 @@ export interface OpenBookResult {
   fileData?: ArrayBuffer;
   /** Present when format is comic (ZIP/CBZ). Pages loaded via readComicPage. */
   comicPageCount?: number;
+  /** Present when format is epub. Entries loaded via readEpubEntry. */
+  epubEntryCount?: number;
+  /** Linear spine length; used until locations.generate finishes. */
+  epubSpineCount?: number;
   /** 0–1 scroll resume point for TXT. */
   lastScrollRatio?: number;
   /** Absolute byte offset resume point for TXT. */
