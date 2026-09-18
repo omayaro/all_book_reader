@@ -17,7 +17,7 @@ import {
 import type { PageMode } from '../types';
 
 interface PagePreviewStripProps {
-  format: 'pdf' | 'comic' | 'txt';
+  format: 'pdf' | 'comic' | 'txt' | 'epub';
   bookId: string;
   totalPages: number;
   page: number;
@@ -52,6 +52,9 @@ export function PagePreviewStrip({
         const pair = comicSpreadPages(page, totalPages, readingDirection);
         if (pair.left != null) set.add(pair.left);
         if (pair.right != null) set.add(pair.right);
+      } else if (format === 'epub') {
+        set.add(page);
+        if (page + 1 <= totalPages) set.add(page + 1);
       } else {
         const pair = spreadPages(page, totalPages);
         set.add(pair.left);
@@ -119,7 +122,7 @@ export function PagePreviewStrip({
   }, [page]);
 
   useEffect(() => {
-    if (range.end < range.start) return;
+    if (format === 'epub' || range.end < range.start) return;
     let cancelled = false;
     const pages: number[] = [];
     for (let p = range.start; p <= range.end; p += 1) pages.push(p);
