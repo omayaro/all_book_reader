@@ -26,6 +26,7 @@ export interface ElectronApi {
   resolveSeriesSibling: (filePath: string, delta: number) => Promise<string | null>;
   closeBook: () => Promise<void>;
   readComicPage: (index: number) => Promise<ArrayBuffer>;
+  readEpubEntry: (entryPath: string, priority?: 'high' | 'low') => Promise<ArrayBuffer>;
   readTxtPage: (page: number) => Promise<TxtPageResult>;
   updateProgress: (
     idOrPath: string,

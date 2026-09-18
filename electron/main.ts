@@ -6,6 +6,7 @@ import {
   Menu,
   shell,
 } from 'electron';
+import { installEpubProtocolHandler, registerEpubScheme } from './epubProtocol';
 import fs from 'node:fs';
 import path from 'node:path';
 import { buildBookId } from '../src/shared/bookId';
@@ -29,6 +30,7 @@ import {
   openComicImageFile,
   readComicPage,
 } from './comicSession';
+import { clearEpubSession, openEpubArchive, readEpubEntry } from './epubSession';
 import { clearTxtSession, openTxtSession, readTxtPage } from './txtSession';
 import { AppStore } from './store';
 
@@ -211,6 +213,7 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
   const lastPage = existing?.lastPage ?? 1;
 
   clearComicSession();
+  clearEpubSession();
   clearTxtSession();
 
   if (format === 'comic') {
@@ -286,6 +289,41 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
       lastByteOffset: pageResult.startByte,
     });
     return result;
+  }
+
+  if (format === 'epub') {
+    const tOpen = Date.now();
+    try {
+      const epub = await openEpubArchive(filePath);
+      const spineCount = Math.max(1, epub.spineHrefs.length);
+      const total = existing?.totalPages && existing.totalPages > 1 ? existing.totalPages : spineCount;
+      result.epubEntryCount = epub.entries.length;
+      result.epubSpineCount = epub.spineHrefs.length;
+      result.totalPages = total;
+      result.lastPage = lastPage;
+      store.upsertRecent({
+        id,
+        path: filePath,
+        format,
+        title,
+        lastPage,
+        totalPages: total,
+        lastScrollRatio: existing?.lastScrollRatio,
+        lastByteOffset: existing?.lastByteOffset,
+      });
+      console.info(
+        `[epub] session open ${Date.now() - tOpen}ms entries=${epub.entries.length} spine=${epub.spineHrefs.length}`,
+      );
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to open EPUB.';
+      await dialog.showMessageBox(mainWindow!, {
+        type: 'error',
+        title: 'Could not open EPUB',
+        message,
+      });
+      return null;
+    }
   }
 
   store.upsertRecent({
@@ -418,12 +456,23 @@ function registerIpc(): void {
 
   ipcMain.handle('books:close', () => {
     clearComicSession();
+    clearEpubSession();
     clearTxtSession();
   });
 
   ipcMain.handle('comic:readPage', async (_event, index: number) => {
     return readComicPage(index);
   });
+
+  ipcMain.handle(
+    'epub:readEntry',
+    async (_event, entryPath: string, priority?: 'high' | 'low') => {
+      if (typeof entryPath !== 'string' || !entryPath) {
+        throw new Error('Missing EPUB entry path.');
+      }
+      return readEpubEntry(entryPath, priority === 'low' ? 'low' : 'high');
+    },
+  );
 
   ipcMain.handle('txt:readPage', (_event, page: number) => {
     return readTxtPage(page);
@@ -517,9 +566,11 @@ function registerIpc(): void {
   });
 }
 
+registerEpubScheme();
 configurePortableUserData();
 
 app.whenReady().then(async () => {
+  installEpubProtocolHandler();
   store = new AppStore(app.getPath('userData'));
 
   // Headless resume check: ABR_E2E_TXT_RESUME=<path> ABR_E2E_TXT_OFFSET=<bytes>
