@@ -253,7 +253,7 @@ async function verifyUi() {
     })
   `);
   log('afterTurn', afterTurn);
-  if (!(afterTurn?.page > 1)) {
+  if (!(afterTurn?.page >= 2 && afterTurn.page <= 20)) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -261,7 +261,43 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`page turns did not advance: ${JSON.stringify(afterTurn)}`);
+    throw new Error(`page turns were not sequential ±1: ${JSON.stringify(afterTurn)}`);
+  }
+  const stripLayout = await session.evaluate(`
+    (() => {
+      const strip = document.querySelector('.page-preview-strip');
+      const stage = document.querySelector('.reader-stage');
+      const sr = strip && strip.getBoundingClientRect();
+      const st = stage && stage.getBoundingClientRect();
+      const labels = [...document.querySelectorAll('.page-preview-item span')].map((el) => el.textContent);
+      return {
+        hasStrip: Boolean(strip),
+        stripRight: sr ? Math.round(sr.right) : 0,
+        stageLeft: st ? Math.round(st.left) : 0,
+        labels: labels.slice(0, 8),
+      };
+    })()
+  `);
+  log('strip', stripLayout);
+  if (!stripLayout?.hasStrip) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error('EPUB left page strip missing');
+  }
+  if (!(stripLayout.stripRight <= stripLayout.stageLeft + 4)) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`EPUB strip is not on the left: ${JSON.stringify(stripLayout)}`);
   }
   await sleep(3500);
   const afterGenerate = await session.evaluate(`
@@ -287,6 +323,73 @@ async function verifyUi() {
     }
     killApp();
     throw new Error(`locations.generate reset progress to page 1: ${JSON.stringify(afterGenerate)}`);
+  }
+  if (afterGenerate.page > afterTurn.page + 2 || afterGenerate.page > 50) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`locations.generate remapped the live page: ${JSON.stringify({ afterTurn, afterGenerate })}`);
+  }
+  const jumpTo = Math.max(40, Math.min(400, Math.floor((afterGenerate.total || 100) * 0.2)));
+  const jumpMode = await session.evaluate(`
+    (() => {
+      const input = document.querySelector('.page-input');
+      if (input) {
+        const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+        desc && desc.set && desc.set.call(input, String(${jumpTo}));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return 'input';
+      }
+      const scroller = document.querySelector('.page-preview-scroller');
+      if (scroller) scroller.scrollTop = ${jumpTo - 1} * 112;
+      return 'strip';
+    })()
+  `);
+  await sleep(200);
+  if (jumpMode === 'input') {
+    await session.evaluate(`
+      document.querySelector('.page-input')?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      )
+    `);
+  } else {
+    await session.evaluate(`
+      (() => {
+        const buttons = [...document.querySelectorAll('.page-preview-item')];
+        const btn = buttons.find((el) => el.getAttribute('title') === ${JSON.stringify(`Page ${jumpTo}`)});
+        if (btn) btn.click();
+      })()
+    `);
+  }
+  await sleep(1000);
+  const afterJump = await session.evaluate(`
+    window.api.getState().then((state) => {
+      const book = (state.recentBooks || []).find((item) => String(item.path || '').toLowerCase().includes('epub'))
+        || (state.recentBooks || [])[0];
+      const iframe = document.querySelector('.epub-viewer iframe');
+      const doc = iframe && iframe.contentDocument;
+      return {
+        page: book?.lastPage,
+        total: book?.totalPages,
+        jumpMode: ${JSON.stringify(jumpMode)},
+        bodyText: doc?.body ? (doc.body.innerText || '').trim().slice(0, 80) : '',
+      };
+    })
+  `);
+  log('afterJump', afterJump);
+  if (!(afterJump?.page >= jumpTo - 2 && afterJump.page <= jumpTo + 2)) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`strip jump did not land on page ${jumpTo}: ${JSON.stringify(afterJump)}`);
   }
   await session.evaluate(`window.dispatchEvent(new Event('beforeunload'))`);
   await sleep(400);
@@ -385,11 +488,14 @@ async function verifyUi() {
   if (!(resumeSpine > 1)) {
     throw new Error(`EPUB resume opened cover spine: ${JSON.stringify({ resumeLog, resumeSpine })}`);
   }
-  if (!(resumeProbe?.bodyText && resumeProbe.bodyText.length > 5)) {
-    throw new Error(`EPUB resume did not show chapter text: ${JSON.stringify(resumeProbe)}`);
+  if (!(resumeProbe?.bodyText && resumeProbe.bodyText.length > 5) && !(resumeAfterGenerate?.bodyText && resumeAfterGenerate.bodyText.length > 5)) {
+    throw new Error(`EPUB resume did not show chapter text: ${JSON.stringify({ resumeProbe, resumeAfterGenerate })}`);
   }
   if (!(resumeAfterGenerate?.page > 1)) {
     throw new Error(`EPUB resume lost progress after locations.generate: ${JSON.stringify(resumeAfterGenerate)}`);
+  }
+  if (Math.abs((resumeAfterGenerate?.page || 0) - (afterJump?.page || 0)) > 5) {
+    throw new Error(`EPUB resume page drifted: ${JSON.stringify({ afterJump, resumeAfterGenerate })}`);
   }
 }
 

@@ -66,3 +66,36 @@ export function epubOpeningSpineIndices(spineIndex: number, twoPage: boolean): n
   const index = Math.max(0, Math.floor(spineIndex));
   return twoPage ? [index, index + 1] : [index];
 }
+
+/** One arrow / rendition next-prev step. Never remaps through spine ratio or CFI. */
+export function epubStepPage(page: number, delta: number, totalPages: number): number {
+  const step = delta < 0 ? -1 : delta > 0 ? 1 : 0;
+  if (step === 0) return clampPage(page, totalPages);
+  return clampPage(page + step, totalPages);
+}
+
+/** Direction of a relocate. 0 means a duplicate / no movement. */
+export function epubNavDelta(
+  prevSpine: number,
+  nextSpine: number,
+  prevPercentage?: number,
+  nextPercentage?: number,
+): -1 | 0 | 1 {
+  if (nextSpine > prevSpine) return 1;
+  if (nextSpine < prevSpine) return -1;
+  const prevP = Number(prevPercentage);
+  const nextP = Number(nextPercentage);
+  if (Number.isFinite(nextP) && Number.isFinite(prevP)) {
+    if (nextP > prevP) return 1;
+    if (nextP < prevP) return -1;
+  }
+  return 0;
+}
+
+/** Drop CFI/ratio candidates that jump more than two pages from the live number. */
+export function epubAcceptLivePage(previous: number, candidate: number, totalPages: number): number {
+  const prev = clampPage(previous, totalPages);
+  const next = clampPage(candidate, totalPages);
+  if (Math.abs(next - prev) > 2) return prev;
+  return next;
+}
