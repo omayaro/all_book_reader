@@ -17,7 +17,7 @@ import {
   isReadingDirection,
   type ReadingDirection,
 } from './shared/comic';
-import { parsePageInput, sanitizePageDigits, stepPage } from './shared/pageMode';
+import { parsePageInput, sanitizePageDigits, spreadStartPage, stepPage } from './shared/pageMode';
 import type {
   AppSettings,
   FitMode,
@@ -840,8 +840,12 @@ export default function App() {
               readingDirection={settings.readingDirection}
               pdfData={book.format === 'pdf' ? book.fileData : undefined}
               onSelectPage={(next) => {
-                scheduleProgressSave(next, book.totalPages);
-                setStatus(`Jumped to page ${next}`);
+                const target =
+                  settings.pageMode === 'two' && book.format === 'epub'
+                    ? spreadStartPage(next)
+                    : next;
+                scheduleProgressSave(target, book.totalPages);
+                setStatus(`Jumped to page ${target}`);
                 focusReader();
               }}
             />

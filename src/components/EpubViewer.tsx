@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef } from 'react';
 import ePub, { type Book, type Rendition } from 'epubjs';
 import type { PageMode } from '../types';
 import { clampPage } from '../shared/pageMode';
@@ -99,7 +99,7 @@ const EpubHost = memo(function EpubHost({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     clearEpubEntryCache();
@@ -424,16 +424,40 @@ export function EpubViewer({
     allowResumeSnapRef.current = false;
     externalJumpRef.current = true;
     syncedPageRef.current = page;
+    const urls = linearSpineUrls(book);
     const locCount = book.locations.length();
+    const total = Math.max(1, locCount || savedTotalPages, urls.length || 1);
+    const spineIndex = epubResumeSpineIndex(page, total, urls.length);
+    let beforeCfi = '';
+    try {
+      const before = rendition.currentLocation() as { start?: { cfi?: string } };
+      beforeCfi = before?.start?.cfi || '';
+    } catch {
+      beforeCfi = '';
+    }
     if (!generateDoneRef.current || !locCount) {
-      const urls = linearSpineUrls(book);
-      const spineIndex = epubResumeSpineIndex(page, savedTotalPages, urls.length);
       void rendition.display(spineIndex);
       return;
     }
     const target = clampPage(page, locCount);
     const cfi = book.locations.cfiFromLocation(target - 1);
-    void rendition.display(cfi || undefined);
+    const shown = cfi ? rendition.display(cfi) : rendition.display(spineIndex);
+    void Promise.resolve(shown).then(() => {
+      let nowCfi = '';
+      let nowSpine = -1;
+      try {
+        const now = rendition.currentLocation() as { start?: { index?: number; cfi?: string } };
+        nowCfi = now?.start?.cfi || '';
+        nowSpine = typeof now?.start?.index === 'number' ? now.start.index : -1;
+      } catch {
+        nowSpine = -1;
+      }
+      const moved = Boolean(nowCfi && nowCfi !== beforeCfi);
+      if (moved) return;
+      if (nowSpine === spineIndex && spineIndex >= 0) return;
+      externalJumpRef.current = true;
+      void rendition.display(spineIndex);
+    });
   }, [page, savedTotalPages]);
 
   useEffect(() => {

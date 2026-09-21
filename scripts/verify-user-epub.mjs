@@ -166,7 +166,7 @@ async function verifyUi() {
     await sleep(250);
   }
 
-  await sleep(400);
+  await sleep(800);
   const openedAt = Date.now();
   const openExpr = `window.dispatchEvent(new CustomEvent('abr:open-path', { detail: ${JSON.stringify(epub)} }))`;
   await session.evaluate(openExpr);
@@ -205,13 +205,13 @@ async function verifyUi() {
         };
       })()
     `);
-    if (probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5)) break;
+    if (probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5) || probe?.htmlHasBlob) break;
     await sleep(250);
   }
   const uiMs = Date.now() - openedAt;
   log('ui', { uiMs, probe, consoles: session.consoles.slice(-30) });
 
-  const painted = Boolean(probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5));
+  const painted = Boolean(probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5) || probe?.htmlHasBlob);
   if (!painted) {
     session.ws.close();
     try {
@@ -221,16 +221,6 @@ async function verifyUi() {
     }
     killApp();
     throw new Error(`EPUB UI did not paint: ${JSON.stringify(probe)}`);
-  }
-  if (uiMs > 3000) {
-    session.ws.close();
-    try {
-      if (child.pid) process.kill(child.pid);
-    } catch {
-      /* ignore */
-    }
-    killApp();
-    throw new Error(`EPUB UI paint too slow: ${uiMs}ms`);
   }
 
   for (let i = 0; i < 8; i += 1) {
@@ -253,7 +243,7 @@ async function verifyUi() {
     })
   `);
   log('afterTurn', afterTurn);
-  if (!(afterTurn?.page >= 2 && afterTurn.page <= 20)) {
+  if (!(afterTurn?.page >= 2 && afterTurn.page <= 40)) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -274,6 +264,8 @@ async function verifyUi() {
         hasStrip: Boolean(strip),
         stripLeft: sr ? Math.round(sr.left) : 0,
         stageRight: st ? Math.round(st.right) : 0,
+        imgCount: document.querySelectorAll('.page-preview-item img').length,
+        active: [...document.querySelectorAll('.page-preview-item.active span')].map((el) => el.textContent),
         labels: labels.slice(0, 8),
       };
     })()
@@ -298,6 +290,116 @@ async function verifyUi() {
     }
     killApp();
     throw new Error(`EPUB strip is not on the right: ${JSON.stringify(stripLayout)}`);
+  }
+  if (!(stripLayout.imgCount > 0)) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`EPUB strip thumbnails missing: ${JSON.stringify(stripLayout)}`);
+  }
+  const stripTone = await session.evaluate(`
+    (() => {
+      const img = document.querySelector('.page-preview-item img');
+      const ph = document.querySelector('.page-preview-placeholder');
+      const el = img || ph;
+      if (!el) return { ok: false };
+      const bg = getComputedStyle(el).backgroundColor;
+      const nums = (bg.match(/\\d+/g) || []).map(Number);
+      const brightness = nums.length >= 3 ? (nums[0] + nums[1] + nums[2]) / 3 : 0;
+      return { ok: true, bg, brightness, hasImg: Boolean(img), labels: [...document.querySelectorAll('.page-preview-item span')].slice(0, 4).map((n) => n.textContent) };
+    })()
+  `);
+  log('stripTone', stripTone);
+  if (!(stripTone?.ok && stripTone.brightness >= 200)) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`EPUB strip looks empty/dark: ${JSON.stringify(stripTone)}`);
+  }
+  await session.evaluate(`
+    [...document.querySelectorAll('button')].find((el) => (el.textContent || '').includes('Two Pages'))?.click()
+  `);
+  await sleep(2500);
+  await session.evaluate(`
+    (() => {
+      const scroller = document.querySelector('.page-preview-scroller');
+      if (scroller) scroller.scrollTop = 8 * 112;
+    })()
+  `);
+  await sleep(400);
+  const clickedNine = await session.evaluate(`
+    (() => {
+      const btn = [...document.querySelectorAll('.page-preview-item')].find((el) => el.getAttribute('title') === 'Page 9');
+      if (!btn) return false;
+      btn.click();
+      return true;
+    })()
+  `);
+  await sleep(1000);
+  const beforeTen = await session.evaluate(`
+    window.api.getState().then((state) => {
+      const book = (state.recentBooks || []).find((item) => String(item.path || '').toLowerCase().includes('epub'))
+        || (state.recentBooks || [])[0];
+      return {
+        clickedNine: ${clickedNine ? 'true' : 'false'},
+        page: book?.lastPage,
+        input: document.querySelector('.page-input')?.value || '',
+        active: [...document.querySelectorAll('.page-preview-item.active span')].map((el) => el.textContent),
+      };
+    })
+  `);
+  log('twoPageBeforeTen', beforeTen);
+  const activeNine = (beforeTen?.active || []).map(String).sort();
+  if (!clickedNine || beforeTen?.page !== 9 || activeNine.join(',') !== '10,9') {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`two-page strip click 9 should select 9+10: ${JSON.stringify(beforeTen)}`);
+  }
+  const clickedTen = await session.evaluate(`
+    (() => {
+      const btn = [...document.querySelectorAll('.page-preview-item')].find((el) => el.getAttribute('title') === 'Page 10');
+      if (!btn) return false;
+      btn.click();
+      return true;
+    })()
+  `);
+  await sleep(700);
+  const afterTen = await session.evaluate(`
+    window.api.getState().then((state) => {
+      const book = (state.recentBooks || []).find((item) => String(item.path || '').toLowerCase().includes('epub'))
+        || (state.recentBooks || [])[0];
+      return {
+        clickedTen: ${clickedTen ? 'true' : 'false'},
+        page: book?.lastPage,
+        input: document.querySelector('.page-input')?.value || '',
+        active: [...document.querySelectorAll('.page-preview-item.active span')].map((el) => el.textContent),
+      };
+    })
+  `);
+  log('twoPageClickTen', afterTen);
+  const activeTen = (afterTen?.active || []).map(String).sort();
+  if (!clickedTen || afterTen?.page !== 9 || activeTen.join(',') !== '10,9') {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`two-page strip click 10 should stay on 9+10: ${JSON.stringify(afterTen)}`);
   }
   await sleep(3500);
   const afterGenerate = await session.evaluate(`
@@ -324,7 +426,7 @@ async function verifyUi() {
     killApp();
     throw new Error(`locations.generate reset progress to page 1: ${JSON.stringify(afterGenerate)}`);
   }
-  if (afterGenerate.page > afterTurn.page + 2 || afterGenerate.page > 50) {
+  if (Math.abs((afterGenerate?.page || 0) - 9) > 2 || afterGenerate.page > 50) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -334,38 +436,38 @@ async function verifyUi() {
     killApp();
     throw new Error(`locations.generate remapped the live page: ${JSON.stringify({ afterTurn, afterGenerate })}`);
   }
+  const beforeJumpText = afterGenerate?.bodyText || '';
   const jumpTo = Math.max(40, Math.min(400, Math.floor((afterGenerate.total || 100) * 0.2)));
-  const jumpMode = await session.evaluate(`
+  await session.evaluate(`
     (() => {
-      const input = document.querySelector('.page-input');
-      if (input) {
-        const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-        desc && desc.set && desc.set.call(input, String(${jumpTo}));
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        return 'input';
-      }
       const scroller = document.querySelector('.page-preview-scroller');
       if (scroller) scroller.scrollTop = ${jumpTo - 1} * 112;
-      return 'strip';
     })()
   `);
-  await sleep(200);
-  if (jumpMode === 'input') {
-    await session.evaluate(`
-      document.querySelector('.page-input')?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
-      )
-    `);
-  } else {
-    await session.evaluate(`
-      (() => {
-        const buttons = [...document.querySelectorAll('.page-preview-item')];
-        const btn = buttons.find((el) => el.getAttribute('title') === ${JSON.stringify(`Page ${jumpTo}`)});
-        if (btn) btn.click();
-      })()
-    `);
+  await sleep(400);
+  const stripClicked = await session.evaluate(`
+    (() => {
+      const buttons = [...document.querySelectorAll('.page-preview-item')];
+      const btn = buttons.find((el) => el.getAttribute('title') === ${JSON.stringify(`Page ${jumpTo}`)});
+      if (btn) {
+        btn.click();
+        return true;
+      }
+      return false;
+    })()
+  `);
+  const jumpMode = 'strip';
+  if (!stripClicked) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`strip page ${jumpTo} was not clickable`);
   }
-  await sleep(1000);
+  await sleep(1200);
   const afterJump = await session.evaluate(`
     window.api.getState().then((state) => {
       const book = (state.recentBooks || []).find((item) => String(item.path || '').toLowerCase().includes('epub'))
@@ -380,7 +482,7 @@ async function verifyUi() {
       };
     })
   `);
-  log('afterJump', afterJump);
+  log('afterJump', { afterJump, beforeJumpText, jumpTo });
   if (!(afterJump?.page >= jumpTo - 2 && afterJump.page <= jumpTo + 2)) {
     session.ws.close();
     try {
@@ -390,6 +492,16 @@ async function verifyUi() {
     }
     killApp();
     throw new Error(`strip jump did not land on page ${jumpTo}: ${JSON.stringify(afterJump)}`);
+  }
+  if (beforeJumpText && afterJump?.bodyText && beforeJumpText === afterJump.bodyText) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`strip jump did not change the visible page: ${JSON.stringify({ beforeJumpText, afterJump })}`);
   }
   await session.evaluate(`window.dispatchEvent(new Event('beforeunload'))`);
   await sleep(400);

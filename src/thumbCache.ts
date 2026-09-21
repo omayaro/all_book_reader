@@ -166,6 +166,45 @@ async function renderTxtThumb(pageNumber: number): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.82);
 }
 
+export function getEpubThumbUrl(pageNumber: number, bookId: string): Promise<string> {
+  const key = cacheKey('epub', pageNumber, bookId);
+  const hit = cache.get(key);
+  if (hit) {
+    touch(key);
+    return Promise.resolve(hit);
+  }
+  let pending = inflight.get(key);
+  if (!pending) {
+    pending = Promise.resolve(renderEpubThumb(pageNumber)).then((url) => {
+      cache.set(key, url);
+      touch(key);
+      inflight.delete(key);
+      return url;
+    });
+    inflight.set(key, pending);
+  }
+  return pending;
+}
+
+function renderEpubThumb(pageNumber: number): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = THUMB_WIDTH;
+  canvas.height = TXT_THUMB_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No 2d context');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#888888';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Page', canvas.width / 2, 28);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(pageNumber), canvas.width / 2, canvas.height / 2 + 8);
+  return canvas.toDataURL('image/png');
+}
+
 export function getTxtThumbUrl(pageNumber: number, bookId: string): Promise<string> {
   const key = cacheKey('txt', pageNumber, bookId);
   const hit = cache.get(key);

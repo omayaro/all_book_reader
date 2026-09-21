@@ -14,6 +14,9 @@ describe('pageMode', () => {
     expect(spreadStartPage(2)).toBe(1);
     expect(spreadStartPage(3)).toBe(3);
     expect(spreadPages(2, 5)).toEqual({ left: 1, right: 2 });
+    expect(spreadPages(9, 20)).toEqual({ left: 9, right: 10 });
+    expect(spreadPages(10, 20)).toEqual({ left: 9, right: 10 });
+    expect(spreadStartPage(10)).toBe(9);
     expect(spreadPages(5, 5)).toEqual({ left: 5, right: null });
   });
 
