@@ -272,8 +272,8 @@ async function verifyUi() {
       const labels = [...document.querySelectorAll('.page-preview-item span')].map((el) => el.textContent);
       return {
         hasStrip: Boolean(strip),
-        stripRight: sr ? Math.round(sr.right) : 0,
-        stageLeft: st ? Math.round(st.left) : 0,
+        stripLeft: sr ? Math.round(sr.left) : 0,
+        stageRight: st ? Math.round(st.right) : 0,
         labels: labels.slice(0, 8),
       };
     })()
@@ -287,9 +287,9 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error('EPUB left page strip missing');
+    throw new Error('EPUB page strip missing');
   }
-  if (!(stripLayout.stripRight <= stripLayout.stageLeft + 4)) {
+  if (!(stripLayout.stripLeft >= stripLayout.stageRight - 4)) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -297,7 +297,7 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`EPUB strip is not on the left: ${JSON.stringify(stripLayout)}`);
+    throw new Error(`EPUB strip is not on the right: ${JSON.stringify(stripLayout)}`);
   }
   await sleep(3500);
   const afterGenerate = await session.evaluate(`

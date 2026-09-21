@@ -759,22 +759,7 @@ export default function App() {
           }}
         />
       ) : (
-        <div className={`reader${book.format === 'epub' ? ' reader-epub' : ''}`}>
-          {book.format === 'epub' && book.totalPages > 0 && (
-            <PagePreviewStrip
-              format="epub"
-              bookId={book.id}
-              totalPages={book.totalPages}
-              page={page}
-              pageMode={settings.pageMode}
-              readingDirection={settings.readingDirection}
-              onSelectPage={(next) => {
-                scheduleProgressSave(next, book.totalPages);
-                setStatus(`Jumped to page ${next}`);
-                focusReader();
-              }}
-            />
-          )}
+        <div className="reader">
           <div
             className="reader-stage"
             ref={readerStageRef}
@@ -845,8 +830,7 @@ export default function App() {
               />
             )}
           </div>
-          {(book.format === 'pdf' || book.format === 'comic' || book.format === 'txt') &&
-            book.totalPages > 0 && (
+          {book.totalPages > 0 && (
             <PagePreviewStrip
               format={book.format}
               bookId={book.id}

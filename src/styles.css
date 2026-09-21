@@ -358,11 +358,6 @@ input {
   flex-direction: column;
 }
 
-.reader-epub .page-preview-strip {
-  border-left: 0;
-  border-right: 1px solid var(--border);
-}
-
 .page-preview-scroller {
   flex: 1;
   min-height: 0;
