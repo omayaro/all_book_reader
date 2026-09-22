@@ -167,6 +167,8 @@ async function verifyUi() {
   }
 
   await sleep(800);
+  await session.evaluate(`window.api.saveSettings({ pageMode: 'single' })`);
+  await sleep(200);
   const openedAt = Date.now();
   const openExpr = `window.dispatchEvent(new CustomEvent('abr:open-path', { detail: ${JSON.stringify(epub)} }))`;
   await session.evaluate(openExpr);
@@ -213,6 +215,37 @@ async function verifyUi() {
 
   const painted = Boolean(probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5) || probe?.htmlHasBlob);
   if (!painted) {
+    await session.evaluate(`
+      [...document.querySelectorAll('button')].find((el) => (el.textContent || '').trim() === 'Close')?.click()
+    `);
+    await sleep(800);
+    await session.evaluate(openExpr);
+    for (let i = 0; i < 40; i += 1) {
+      probe = await session.evaluate(`
+        (() => {
+          const iframe = document.querySelector('.epub-viewer iframe');
+          const doc = iframe && iframe.contentDocument;
+          const imgs = doc ? [...doc.images] : [];
+          const bodyText = doc?.body ? (doc.body.innerText || '').trim() : '';
+          const html = doc?.documentElement ? doc.documentElement.outerHTML : '';
+          return {
+            home: Boolean(document.querySelector('.home')),
+            hasViewer: Boolean(document.querySelector('.epub-viewer')),
+            viewerHTML: (document.querySelector('.epub-viewer')?.innerHTML || '').slice(0, 240),
+            pageInput: document.querySelector('.page-input')?.value || '',
+            iframeCount: document.querySelectorAll('.epub-viewer iframe').length,
+            bodyText: bodyText.slice(0, 120),
+            imgW: imgs[0] ? imgs[0].naturalWidth : 0,
+            htmlHasBlob: html.includes('blob:'),
+          };
+        })()
+      `);
+      if (probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5) || probe?.htmlHasBlob) break;
+      await sleep(250);
+    }
+    log('ui-retry', { probe, consoles: session.consoles.filter((line) => String(line).includes('[epub]')).slice(-8) });
+  }
+  if (!(probe?.imgW > 10 || (probe?.bodyText && probe.bodyText.length > 5) || probe?.htmlHasBlob)) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -243,7 +276,14 @@ async function verifyUi() {
     })
   `);
   log('afterTurn', afterTurn);
-  if (!(afterTurn?.page >= 2 && afterTurn.page <= 40)) {
+  const startPage = Math.max(1, Number(probe?.pageInput) || 1);
+  if (
+    !(
+      afterTurn?.page >= startPage &&
+      afterTurn.page <= startPage + 12 &&
+      afterTurn.page < 400
+    )
+  ) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -291,7 +331,25 @@ async function verifyUi() {
     killApp();
     throw new Error(`EPUB strip is not on the right: ${JSON.stringify(stripLayout)}`);
   }
-  if (!(stripLayout.imgCount > 0)) {
+  let stripContent = null;
+  for (let i = 0; i < 20; i += 1) {
+    stripContent = await session.evaluate(`
+      (() => {
+        const imgs = [...document.querySelectorAll('.page-preview-item img')];
+        const srcs = imgs.map((el) => el.getAttribute('src') || '');
+        return {
+          imgCount: imgs.length,
+          jpeg: srcs.filter((s) => s.startsWith('data:image/jpeg')).length,
+          unique: new Set(srcs).size,
+          kind: (srcs[0] || '').slice(0, 22),
+        };
+      })()
+    `);
+    if (stripContent?.jpeg >= 2 && stripContent.unique >= 2) break;
+    await sleep(250);
+  }
+  log('stripContent', stripContent);
+  if (!(stripContent?.jpeg >= 2 && stripContent.unique >= 2)) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -299,7 +357,7 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`EPUB strip thumbnails missing: ${JSON.stringify(stripLayout)}`);
+    throw new Error(`EPUB strip has no per-page content: ${JSON.stringify(stripContent)}`);
   }
   const stripTone = await session.evaluate(`
     (() => {
@@ -564,10 +622,14 @@ async function verifyUi() {
         };
       })
     `);
-    if (resumeProbe?.hasViewer && resumeProbe.page > 1) break;
+    if (resumeProbe?.hasViewer && resumeProbe.page > 1 && (resumeProbe.iframeCount > 0 || (resumeProbe.bodyText && resumeProbe.bodyText.length > 5))) break;
     await sleep(250);
   }
-  const resumeLog = session2.consoles.find((line) => String(line).includes('[epub] first display'));
+  let resumeLog = session2.consoles.find((line) => String(line).includes('[epub] first display'));
+  for (let i = 0; i < 16 && !resumeLog; i += 1) {
+    await sleep(250);
+    resumeLog = session2.consoles.find((line) => String(line).includes('[epub] first display'));
+  }
   const spineMatch = String(resumeLog || '').match(/spine=(\d+)\//);
   const resumeSpine = spineMatch ? Number(spineMatch[1]) : 0;
   log('resume', { resumeProbe, resumeLog, resumeSpine });

@@ -71,7 +71,7 @@ export function PagePreviewStrip({
     setThumbs({});
     setPdfDoc(null);
     return () => clearThumbCache();
-  }, [bookId, format]);
+  }, [bookId, format, totalPages]);
 
   useEffect(() => {
     if (format !== 'pdf' || !pdfData) {
@@ -141,7 +141,7 @@ export function PagePreviewStrip({
               : format === 'txt'
                 ? await getTxtThumbUrl(p, bookId)
                 : format === 'epub'
-                  ? await getEpubThumbUrl(p, bookId)
+                  ? await getEpubThumbUrl(p, bookId, totalPages)
                   : pdfDoc
                     ? await getPdfThumbUrl(pdfDoc, p, bookId)
                     : null;
@@ -158,7 +158,7 @@ export function PagePreviewStrip({
     };
     // thumbs intentionally omitted to avoid reload loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.start, range.end, format, bookId, pdfDoc, activePages]);
+  }, [range.start, range.end, format, bookId, pdfDoc, activePages, totalPages]);
 
   const selectFromClientY = (clientY: number) => {
     const el = scrollerRef.current;
