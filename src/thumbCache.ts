@@ -316,7 +316,7 @@ async function renderEpubThumb(
     }
   }
   if (preview) return paintTextThumb(preview);
-  return paintTextThumb(`Page ${pageNumber}`);
+  return paintTextThumb(' ');
 }
 
 export function getTxtThumbUrl(pageNumber: number, bookId: string): Promise<string> {

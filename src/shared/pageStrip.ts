@@ -42,6 +42,8 @@ export function htmlToThumbText(html: string): string {
   const without = html
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<head\b[\s\S]*?<\/head>/gi, ' ')
+    .replace(/<title\b[\s\S]*?<\/title>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
@@ -52,7 +54,8 @@ export function htmlToThumbText(html: string): string {
     .replace(/&#(\d+);/g, (_, code) => {
       const n = Number(code);
       return Number.isFinite(n) ? String.fromCharCode(n) : ' ';
-    });
+    })
+    .replace(/\bpage-\d+\b/gi, ' ');
   return without.replace(/\s+/g, ' ').trim();
 }
 

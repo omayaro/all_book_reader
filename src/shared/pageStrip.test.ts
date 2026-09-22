@@ -21,6 +21,10 @@ describe('pageStrip', () => {
   it('strips chapter HTML into preview text', () => {
     expect(htmlToThumbText('<p>Hello&nbsp;<b>world</b></p>')).toBe('Hello world');
     expect(htmlToThumbText('<style>p{color:red}</style><p>본문</p>')).toBe('본문');
+    expect(htmlToThumbText('<head><title>page-147</title></head><p>본문입니다</p>')).toBe(
+      '본문입니다',
+    );
+    expect(htmlToThumbText('<title>page-1</title>CHEER UP!')).toBe('CHEER UP!');
   });
 
   it('finds the first chapter image src', () => {
