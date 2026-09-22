@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pageFromStripOffset, txtThumbPreviewText, visibleStripPages } from './pageStrip';
+import { pageFromStripOffset, txtThumbPreviewText, visibleStripPages, htmlToThumbText, firstHtmlImgSrc, epubThumbPreviewText } from './pageStrip';
 
 describe('pageStrip', () => {
   it('computes visible page range with overscan', () => {
@@ -16,5 +16,28 @@ describe('pageStrip', () => {
   it('compacts TXT thumb preview text', () => {
     expect(txtThumbPreviewText('  a\n\nb  c  ', 5)).toBe('a b c'.slice(0, 5));
     expect(txtThumbPreviewText('hello   world')).toBe('hello world');
+  });
+
+  it('strips chapter HTML into preview text', () => {
+    expect(htmlToThumbText('<p>Hello&nbsp;<b>world</b></p>')).toBe('Hello world');
+    expect(htmlToThumbText('<style>p{color:red}</style><p>본문</p>')).toBe('본문');
+    expect(htmlToThumbText('<head><title>page-147</title></head><p>본문입니다</p>')).toBe(
+      '본문입니다',
+    );
+    expect(htmlToThumbText('<title>page-1</title>CHEER UP!')).toBe('CHEER UP!');
+  });
+
+  it('finds the first chapter image src', () => {
+    expect(firstHtmlImgSrc('<p>x</p><img alt="" src="../Images/cover.jpg">')).toBe(
+      '../Images/cover.jpg',
+    );
+    expect(firstHtmlImgSrc('<img src="data:image/png;base64,xx">')).toBeNull();
+  });
+
+  it('does not slide the same chapter into fake extra pages', () => {
+    const chapter = '지은이 멜 로빈스 ' + '본문 '.repeat(40);
+    expect(epubThumbPreviewText(chapter, 1, 69, 69)).toBe(
+      epubThumbPreviewText(chapter, 8, 69, 69),
+    );
   });
 });

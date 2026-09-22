@@ -33,6 +33,11 @@ import {
 import { clearEpubSession, openEpubArchive, readEpubEntry } from './epubSession';
 import { clearTxtSession, openTxtSession, readTxtPage } from './txtSession';
 import { AppStore } from './store';
+import { clampPage } from '../src/shared/pageMode';
+import {
+  epubResumeSpineIndex,
+  epubSavedTotalIsLocationMap,
+} from '../src/shared/epubResume';
 
 const isDevRuntime = Boolean(process.defaultApp);
 let mainWindow: BrowserWindow | null = null;
@@ -296,18 +301,23 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
     try {
       const epub = await openEpubArchive(filePath);
       const spineCount = Math.max(1, epub.spineHrefs.length);
-      const total = existing?.totalPages && existing.totalPages > 1 ? existing.totalPages : spineCount;
+      const savedTotal = existing?.totalPages ?? 0;
+      const savedPage = lastPage || 1;
+      const spineIndex = epubSavedTotalIsLocationMap(savedTotal, spineCount)
+        ? epubResumeSpineIndex(savedPage, savedTotal, spineCount)
+        : clampPage(savedPage, spineCount) - 1;
+      const page = spineIndex + 1;
       result.epubEntryCount = epub.entries.length;
       result.epubSpineCount = epub.spineHrefs.length;
-      result.totalPages = total;
-      result.lastPage = lastPage;
+      result.totalPages = spineCount;
+      result.lastPage = page;
       store.upsertRecent({
         id,
         path: filePath,
         format,
         title,
-        lastPage,
-        totalPages: total,
+        lastPage: page,
+        totalPages: spineCount,
         lastScrollRatio: existing?.lastScrollRatio,
         lastByteOffset: existing?.lastByteOffset,
       });

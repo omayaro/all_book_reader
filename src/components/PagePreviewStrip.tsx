@@ -3,6 +3,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import {
   clearThumbCache,
   getComicThumbUrl,
+  getEpubThumbUrl,
   getPdfThumbUrl,
   getTxtThumbUrl,
   loadPdfDocument,
@@ -17,7 +18,7 @@ import {
 import type { PageMode } from '../types';
 
 interface PagePreviewStripProps {
-  format: 'pdf' | 'comic' | 'txt';
+  format: 'pdf' | 'comic' | 'txt' | 'epub';
   bookId: string;
   totalPages: number;
   page: number;
@@ -70,7 +71,7 @@ export function PagePreviewStrip({
     setThumbs({});
     setPdfDoc(null);
     return () => clearThumbCache();
-  }, [bookId, format]);
+  }, [bookId, format, totalPages]);
 
   useEffect(() => {
     if (format !== 'pdf' || !pdfData) {
@@ -139,9 +140,11 @@ export function PagePreviewStrip({
               ? await getComicThumbUrl(p, bookId)
               : format === 'txt'
                 ? await getTxtThumbUrl(p, bookId)
-                : pdfDoc
-                  ? await getPdfThumbUrl(pdfDoc, p, bookId)
-                  : null;
+                : format === 'epub'
+                  ? await getEpubThumbUrl(p, bookId, totalPages)
+                  : pdfDoc
+                    ? await getPdfThumbUrl(pdfDoc, p, bookId)
+                    : null;
           if (!url || cancelled) continue;
           setThumbs((prev) => (prev[p] ? prev : { ...prev, [p]: url }));
         } catch {
@@ -155,7 +158,7 @@ export function PagePreviewStrip({
     };
     // thumbs intentionally omitted to avoid reload loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.start, range.end, format, bookId, pdfDoc, activePages]);
+  }, [range.start, range.end, format, bookId, pdfDoc, activePages, totalPages]);
 
   const selectFromClientY = (clientY: number) => {
     const el = scrollerRef.current;
@@ -209,7 +212,7 @@ export function PagePreviewStrip({
                 {thumbs[pageNumber] ? (
                   <img src={thumbs[pageNumber]} alt="" draggable={false} />
                 ) : (
-                  <div className="page-preview-placeholder" />
+                  <div className="page-preview-placeholder">{pageNumber}</div>
                 )}
                 <span>{pageNumber}</span>
               </button>

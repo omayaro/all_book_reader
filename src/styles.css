@@ -400,7 +400,13 @@ input {
 }
 
 .page-preview-placeholder {
-  background: color-mix(in srgb, var(--border) 35%, transparent);
+  background: #fff;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.05rem;
 }
 
 .page-preview-item.active img,

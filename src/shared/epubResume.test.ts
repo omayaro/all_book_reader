@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  epubAcceptLivePage,
+  epubNavDelta,
   epubOpeningSpineIndices,
   epubPageFromSpineIndex,
   epubPersistedPage,
   epubResumeSpineIndex,
   epubSavedTotalIsLocationMap,
+  epubStepPage,
+  epubUiSpineIndex,
 } from './epubResume';
 
 describe('epubResumeSpineIndex', () => {
@@ -40,6 +44,20 @@ describe('epubResumeSpineIndex', () => {
   });
 });
 
+describe('epubUiSpineIndex', () => {
+  it('maps each UI page onto its own spine item', () => {
+    expect(epubUiSpineIndex(1, 69)).toBe(0);
+    expect(epubUiSpineIndex(10, 69)).toBe(9);
+    expect(epubUiSpineIndex(69, 69)).toBe(68);
+    expect(epubUiSpineIndex(80, 69)).toBe(68);
+    const seen = new Set<number>();
+    for (let page = 1; page <= 69; page += 1) {
+      seen.add(epubUiSpineIndex(page, 69));
+    }
+    expect(seen.size).toBe(69);
+  });
+});
+
 describe('epubSavedTotalIsLocationMap', () => {
   it('treats spine-sized totals as temporary', () => {
     expect(epubSavedTotalIsLocationMap(69, 69)).toBe(false);
@@ -67,5 +85,38 @@ describe('epubOpeningSpineIndices', () => {
   it('includes the paired page in two-page mode', () => {
     expect(epubOpeningSpineIndices(6, false)).toEqual([6]);
     expect(epubOpeningSpineIndices(6, true)).toEqual([6, 7]);
+  });
+});
+
+describe('epubStepPage', () => {
+  it('advances one page at a time from page 1', () => {
+    let page = 1;
+    for (let i = 0; i < 10; i += 1) page = epubStepPage(page, 1, 198);
+    expect(page).toBe(11);
+  });
+
+  it('does not produce spine-ratio pages like 18 or 1339', () => {
+    expect(epubStepPage(1, 1, 198)).toBe(2);
+    expect(epubStepPage(1, 1, 1339)).toBe(2);
+    expect(epubStepPage(2, -1, 198)).toBe(1);
+  });
+});
+
+describe('epubNavDelta', () => {
+  it('uses spine order then percentage inside a chapter', () => {
+    expect(epubNavDelta(0, 1)).toBe(1);
+    expect(epubNavDelta(4, 3)).toBe(-1);
+    expect(epubNavDelta(2, 2, 0.1, 0.4)).toBe(1);
+    expect(epubNavDelta(2, 2, 0.4, 0.1)).toBe(-1);
+    expect(epubNavDelta(2, 2, 0.2, 0.2)).toBe(0);
+  });
+});
+
+describe('epubAcceptLivePage', () => {
+  it('discards ratio and location-index jumps', () => {
+    expect(epubAcceptLivePage(1, 18, 198)).toBe(1);
+    expect(epubAcceptLivePage(1, 1339, 1339)).toBe(1);
+    expect(epubAcceptLivePage(5, 6, 100)).toBe(6);
+    expect(epubAcceptLivePage(5, 7, 100)).toBe(7);
   });
 });
