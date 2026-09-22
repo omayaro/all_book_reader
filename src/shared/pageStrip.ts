@@ -1,5 +1,4 @@
 import { clampPage } from './pageMode';
-import { epubPageFromSpineIndex, epubResumeSpineIndex } from './epubResume';
 
 export const PAGE_STRIP_ITEM_HEIGHT = 112;
 export const PAGE_STRIP_OVERSCAN = 4;
@@ -68,28 +67,15 @@ export function firstHtmlImgSrc(html: string): string | null {
 }
 
 /**
- * Slice chapter text so adjacent location-pages in the same spine
- * show different preview windows.
+ * Chapter preview for one spine item. Does not slide the same HTML across
+ * multiple strip slots — uniqueness comes from one slot per file.
  */
 export function epubThumbPreviewText(
   chapterText: string,
-  page: number,
-  totalPages: number,
-  spineLength: number,
+  _page?: number,
+  _totalPages?: number,
+  _spineLength?: number,
   maxChars = 220,
 ): string {
-  const text = chapterText.replace(/\s+/g, ' ').trim();
-  if (!text) return '';
-  const spines = Math.max(1, Math.floor(spineLength) || 1);
-  const total = Math.max(1, Math.floor(totalPages) || 1);
-  const index = epubResumeSpineIndex(page, total, spines);
-  const startPage = epubPageFromSpineIndex(index, total, spines);
-  const endPage =
-    index + 1 < spines ? epubPageFromSpineIndex(index + 1, total, spines) : total + 1;
-  const span = Math.max(1, endPage - startPage);
-  const offset = Math.max(0, Math.floor(page) - startPage);
-  const maxStart = Math.max(0, text.length - maxChars);
-  const from =
-    span <= 1 ? 0 : Math.min(maxStart, Math.round((offset / Math.max(1, span - 1)) * maxStart));
-  return txtThumbPreviewText(text.slice(from), maxChars);
+  return txtThumbPreviewText(chapterText.replace(/\s+/g, ' ').trim(), maxChars);
 }

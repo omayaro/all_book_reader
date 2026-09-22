@@ -34,12 +34,10 @@ describe('pageStrip', () => {
     expect(firstHtmlImgSrc('<img src="data:image/png;base64,xx">')).toBeNull();
   });
 
-  it('slices the same spine so later pages show later text', () => {
-    const chapter = 'AAA '.repeat(80) + 'BBB '.repeat(80);
-    const early = epubThumbPreviewText(chapter, 1, 10, 2);
-    const later = epubThumbPreviewText(chapter, 5, 10, 2);
-    expect(early.length).toBeGreaterThan(10);
-    expect(later.length).toBeGreaterThan(10);
-    expect(early).not.toBe(later);
+  it('does not slide the same chapter into fake extra pages', () => {
+    const chapter = '지은이 멜 로빈스 ' + '본문 '.repeat(40);
+    expect(epubThumbPreviewText(chapter, 1, 69, 69)).toBe(
+      epubThumbPreviewText(chapter, 8, 69, 69),
+    );
   });
 });

@@ -345,11 +345,11 @@ async function verifyUi() {
         };
       })()
     `);
-    if (stripContent?.jpeg >= 2 && stripContent.unique >= 2) break;
+    if (stripContent?.jpeg >= 2 && stripContent.unique >= 8) break;
     await sleep(250);
   }
   log('stripContent', stripContent);
-  if (!(stripContent?.jpeg >= 2 && stripContent.unique >= 2)) {
+  if (!(stripContent?.jpeg >= 2 && stripContent.unique >= 8)) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -499,10 +499,12 @@ async function verifyUi() {
   await session.evaluate(`
     (() => {
       const scroller = document.querySelector('.page-preview-scroller');
-      if (scroller) scroller.scrollTop = ${jumpTo - 1} * 112;
+      if (!scroller) return;
+      scroller.scrollTop = ${jumpTo - 1} * 112;
+      scroller.dispatchEvent(new Event('scroll'));
     })()
   `);
-  await sleep(400);
+  await sleep(800);
   const stripClicked = await session.evaluate(`
     (() => {
       const buttons = [...document.querySelectorAll('.page-preview-item')];

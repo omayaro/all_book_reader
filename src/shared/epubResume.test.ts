@@ -8,6 +8,7 @@ import {
   epubResumeSpineIndex,
   epubSavedTotalIsLocationMap,
   epubStepPage,
+  epubUiSpineIndex,
 } from './epubResume';
 
 describe('epubResumeSpineIndex', () => {
@@ -40,6 +41,20 @@ describe('epubResumeSpineIndex', () => {
     expect(epubPageFromSpineIndex(0, 198, 69)).toBe(1);
     expect(epubPageFromSpineIndex(68, 198, 69)).toBe(198);
     expect(epubPageFromSpineIndex(10, 69, 69)).toBe(11);
+  });
+});
+
+describe('epubUiSpineIndex', () => {
+  it('maps each UI page onto its own spine item', () => {
+    expect(epubUiSpineIndex(1, 69)).toBe(0);
+    expect(epubUiSpineIndex(10, 69)).toBe(9);
+    expect(epubUiSpineIndex(69, 69)).toBe(68);
+    expect(epubUiSpineIndex(80, 69)).toBe(68);
+    const seen = new Set<number>();
+    for (let page = 1; page <= 69; page += 1) {
+      seen.add(epubUiSpineIndex(page, 69));
+    }
+    expect(seen.size).toBe(69);
   });
 });
 

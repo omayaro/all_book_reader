@@ -32,6 +32,12 @@ export function epubPageFromSpineIndex(
   return Math.min(total, Math.round((index / (spineLength - 1)) * (total - 1)) + 1);
 }
 
+/** 1-based UI page → 0-based spine index (one strip slot per HTML file). */
+export function epubUiSpineIndex(page: number, spineLength: number): number {
+  if (spineLength < 1) return 0;
+  return clampPage(page, spineLength) - 1;
+}
+
 /** True when saved totalPages is from locations.generate, not temporary spine length. */
 export function epubSavedTotalIsLocationMap(savedTotalPages: number, spineLength: number): boolean {
   const spine = Math.max(1, Math.floor(spineLength) || 1);

@@ -3,9 +3,8 @@ import * as pdfjs from 'pdfjs-dist';
 import { readEpubEntryCached } from './epubEntryCache';
 import { parseContainerPackagePath, parseOpfSpineHrefs } from './shared/epubPackage';
 import { resolveZipPath } from './shared/epubEntryPath';
-import { epubResumeSpineIndex } from './shared/epubResume';
+import { epubUiSpineIndex } from './shared/epubResume';
 import {
-  epubThumbPreviewText,
   firstHtmlImgSrc,
   htmlToThumbText,
   txtThumbPreviewText,
@@ -16,7 +15,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-const MAX_THUMBS = 48;
+const MAX_THUMBS = 96;
 const THUMB_WIDTH = 72;
 
 const cache = new Map<string, string>();
@@ -180,9 +179,9 @@ async function renderTxtThumb(pageNumber: number): Promise<string> {
 export function getEpubThumbUrl(
   pageNumber: number,
   bookId: string,
-  totalPages: number,
+  _totalPages?: number,
 ): Promise<string> {
-  const key = cacheKey('epub', pageNumber, `${bookId}:${totalPages}`);
+  const key = cacheKey('epub', pageNumber, bookId);
   const hit = cache.get(key);
   if (hit) {
     touch(key);
@@ -190,7 +189,7 @@ export function getEpubThumbUrl(
   }
   let pending = inflight.get(key);
   if (!pending) {
-    pending = renderEpubThumb(pageNumber, bookId, totalPages)
+    pending = renderEpubThumb(pageNumber, bookId)
       .then((url) => {
         cache.set(key, url);
         touch(key);
@@ -287,23 +286,14 @@ async function paintImageThumb(buffer: ArrayBuffer): Promise<string> {
   }
 }
 
-async function renderEpubThumb(
-  pageNumber: number,
-  bookId: string,
-  totalPages: number,
-): Promise<string> {
+async function renderEpubThumb(pageNumber: number, bookId: string): Promise<string> {
   const hrefs = await loadEpubSpineHrefs(bookId);
   if (hrefs.length < 1) throw new Error('EPUB spine is empty');
-  const spineIndex = epubResumeSpineIndex(pageNumber, totalPages, hrefs.length);
+  const spineIndex = epubUiSpineIndex(pageNumber, hrefs.length);
   const href = hrefs[spineIndex];
   if (!href) throw new Error('Missing EPUB spine href');
   const html = decodeUtf8(await readEpubEntryCached(href, 'low'));
-  const preview = epubThumbPreviewText(
-    htmlToThumbText(html),
-    pageNumber,
-    totalPages,
-    hrefs.length,
-  );
+  const preview = txtThumbPreviewText(htmlToThumbText(html));
   if (preview.length >= 24) return paintTextThumb(preview);
   const imgSrc = firstHtmlImgSrc(html);
   if (imgSrc) {
