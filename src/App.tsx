@@ -4,8 +4,10 @@ import { Home } from './components/Home';
 import { TxtViewer } from './components/TxtViewer';
 import { PdfViewer } from './components/PdfViewer';
 import { EpubViewer, type EpubNavigator } from './components/EpubViewer';
+import { EpubTocPanel } from './components/EpubTocPanel';
 import { ComicViewer } from './components/ComicViewer';
 import { PagePreviewStrip } from './components/PagePreviewStrip';
+import type { EpubTocItem } from './shared/epubToc';
 import { clampFontSize, clampZoom, isThemeSetting, mergeSettings, zoomAtMax, zoomAtMin } from './shared/settings';
 import { clampScrollRatio } from './shared/recent';
 import { nextTheme, resolveTheme } from './shared/theme';
@@ -17,7 +19,7 @@ import {
   isReadingDirection,
   type ReadingDirection,
 } from './shared/comic';
-import { parsePageInput, sanitizePageDigits, spreadStartPage, stepPage } from './shared/pageMode';
+import { parsePageInput, sanitizePageDigits, stepPage } from './shared/pageMode';
 import type {
   AppSettings,
   FitMode,
@@ -50,6 +52,8 @@ export default function App() {
   const [searchDirection, setSearchDirection] = useState<'next' | 'prev' | null>(null);
   const [searchNonce, setSearchNonce] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [epubToc, setEpubToc] = useState<EpubTocItem[]>([]);
+  const [epubTocActive, setEpubTocActive] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const txtProgressRef = useRef({ ratio: 0, byteOffset: 0 });
   const readerStageRef = useRef<HTMLDivElement>(null);
@@ -80,6 +84,8 @@ export default function App() {
     setBook(result);
     setPage(startPage);
     setPageInput(String(startPage));
+    setEpubToc([]);
+    setEpubTocActive(0);
     setStatus(`Opened ${result.title}`);
     void (async () => {
       await refreshState();
@@ -158,6 +164,8 @@ export default function App() {
     }
     await getApi().closeBook();
     setBook(null);
+    setEpubToc([]);
+    setEpubTocActive(0);
     setStatus('Ready');
     await refreshState();
   }, [book, page, refreshState, flushTxtProgress]);
@@ -760,6 +768,23 @@ export default function App() {
         />
       ) : (
         <div className="reader">
+          {book.format === 'epub' && epubToc.length > 0 && (
+            <EpubTocPanel
+              items={epubToc}
+              activeIndex={epubTocActive}
+              onSelect={(item) => {
+                setEpubTocActive(
+                  Math.max(0, epubToc.findIndex((row) => row.id === item.id)),
+                );
+                if (item.spineIndex >= 0) {
+                  scheduleProgressSave(item.spineIndex + 1, book.totalPages);
+                }
+                void epubNavRef.current?.displayItem(item);
+                setStatus(`Jumped to ${item.label}`);
+                focusReader();
+              }}
+            />
+          )}
           <div
             className="reader-stage"
             ref={readerStageRef}
@@ -811,6 +836,8 @@ export default function App() {
                 onNavigatorReady={(nav) => {
                   epubNavRef.current = nav;
                 }}
+                onTocChange={setEpubToc}
+                onTocActive={setEpubTocActive}
               />
             )}
             {book.format === 'comic' && (
@@ -830,7 +857,7 @@ export default function App() {
               />
             )}
           </div>
-          {book.totalPages > 0 && (
+          {book.totalPages > 0 && book.format !== 'epub' && (
             <PagePreviewStrip
               format={book.format}
               bookId={book.id}
@@ -840,12 +867,8 @@ export default function App() {
               readingDirection={settings.readingDirection}
               pdfData={book.format === 'pdf' ? book.fileData : undefined}
               onSelectPage={(next) => {
-                const target =
-                  settings.pageMode === 'two' && book.format === 'epub'
-                    ? spreadStartPage(next)
-                    : next;
-                scheduleProgressSave(target, book.totalPages);
-                setStatus(`Jumped to page ${target}`);
+                scheduleProgressSave(next, book.totalPages);
+                setStatus(`Jumped to page ${next}`);
                 focusReader();
               }}
             />

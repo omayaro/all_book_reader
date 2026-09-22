@@ -293,63 +293,32 @@ async function verifyUi() {
     killApp();
     throw new Error(`page turns were not sequential ±1: ${JSON.stringify(afterTurn)}`);
   }
-  const stripLayout = await session.evaluate(`
-    (() => {
-      const strip = document.querySelector('.page-preview-strip');
-      const stage = document.querySelector('.reader-stage');
-      const sr = strip && strip.getBoundingClientRect();
-      const st = stage && stage.getBoundingClientRect();
-      const labels = [...document.querySelectorAll('.page-preview-item span')].map((el) => el.textContent);
-      return {
-        hasStrip: Boolean(strip),
-        stripLeft: sr ? Math.round(sr.left) : 0,
-        stageRight: st ? Math.round(st.right) : 0,
-        imgCount: document.querySelectorAll('.page-preview-item img').length,
-        active: [...document.querySelectorAll('.page-preview-item.active span')].map((el) => el.textContent),
-        labels: labels.slice(0, 8),
-      };
-    })()
-  `);
-  log('strip', stripLayout);
-  if (!stripLayout?.hasStrip) {
-    session.ws.close();
-    try {
-      if (child.pid) process.kill(child.pid);
-    } catch {
-      /* ignore */
-    }
-    killApp();
-    throw new Error('EPUB page strip missing');
-  }
-  if (!(stripLayout.stripLeft >= stripLayout.stageRight - 4)) {
-    session.ws.close();
-    try {
-      if (child.pid) process.kill(child.pid);
-    } catch {
-      /* ignore */
-    }
-    killApp();
-    throw new Error(`EPUB strip is not on the right: ${JSON.stringify(stripLayout)}`);
-  }
-  let stripContent = null;
+  let tocLayout = null;
   for (let i = 0; i < 20; i += 1) {
-    stripContent = await session.evaluate(`
+    tocLayout = await session.evaluate(`
       (() => {
-        const imgs = [...document.querySelectorAll('.page-preview-item img')];
-        const srcs = imgs.map((el) => el.getAttribute('src') || '');
+        const toc = document.querySelector('.epub-toc');
+        const stage = document.querySelector('.reader-stage');
+        const strip = document.querySelector('.page-preview-strip');
+        const tr = toc && toc.getBoundingClientRect();
+        const st = stage && stage.getBoundingClientRect();
+        const labels = [...document.querySelectorAll('.epub-toc-item')].map((el) => el.textContent || '');
         return {
-          imgCount: imgs.length,
-          jpeg: srcs.filter((s) => s.startsWith('data:image/jpeg')).length,
-          unique: new Set(srcs).size,
-          kind: (srcs[0] || '').slice(0, 22),
+          hasToc: Boolean(toc),
+          hasStrip: Boolean(strip),
+          tocRight: tr ? Math.round(tr.right) : 0,
+          stageLeft: st ? Math.round(st.left) : 0,
+          count: labels.length,
+          active: [...document.querySelectorAll('.epub-toc-item.active')].map((el) => el.textContent || ''),
+          labels: labels.slice(0, 8),
         };
       })()
     `);
-    if (stripContent?.jpeg >= 2 && stripContent.unique >= 8) break;
+    if (tocLayout?.hasToc && tocLayout.count >= 2) break;
     await sleep(250);
   }
-  log('stripContent', stripContent);
-  if (!(stripContent?.jpeg >= 2 && stripContent.unique >= 8)) {
+  log('toc', tocLayout);
+  if (!tocLayout?.hasToc || tocLayout.count < 2) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -357,22 +326,9 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`EPUB strip has no per-page content: ${JSON.stringify(stripContent)}`);
+    throw new Error(`EPUB table of contents missing: ${JSON.stringify(tocLayout)}`);
   }
-  const stripTone = await session.evaluate(`
-    (() => {
-      const img = document.querySelector('.page-preview-item img');
-      const ph = document.querySelector('.page-preview-placeholder');
-      const el = img || ph;
-      if (!el) return { ok: false };
-      const bg = getComputedStyle(el).backgroundColor;
-      const nums = (bg.match(/\\d+/g) || []).map(Number);
-      const brightness = nums.length >= 3 ? (nums[0] + nums[1] + nums[2]) / 3 : 0;
-      return { ok: true, bg, brightness, hasImg: Boolean(img), labels: [...document.querySelectorAll('.page-preview-item span')].slice(0, 4).map((n) => n.textContent) };
-    })()
-  `);
-  log('stripTone', stripTone);
-  if (!(stripTone?.ok && stripTone.brightness >= 200)) {
+  if (tocLayout.hasStrip) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -380,43 +336,34 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`EPUB strip looks empty/dark: ${JSON.stringify(stripTone)}`);
+    throw new Error('EPUB still shows the page strip');
+  }
+  if (!(tocLayout.tocRight <= tocLayout.stageLeft + 4)) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`EPUB TOC is not on the left: ${JSON.stringify(tocLayout)}`);
   }
   await session.evaluate(`
     [...document.querySelectorAll('button')].find((el) => (el.textContent || '').includes('Two Pages'))?.click()
   `);
   await sleep(2500);
-  await session.evaluate(`
+  const twoPageToc = await session.evaluate(`
     (() => {
-      const scroller = document.querySelector('.page-preview-scroller');
-      if (scroller) scroller.scrollTop = 8 * 112;
-    })()
-  `);
-  await sleep(400);
-  const clickedNine = await session.evaluate(`
-    (() => {
-      const btn = [...document.querySelectorAll('.page-preview-item')].find((el) => el.getAttribute('title') === 'Page 9');
-      if (!btn) return false;
-      btn.click();
-      return true;
-    })()
-  `);
-  await sleep(1000);
-  const beforeTen = await session.evaluate(`
-    window.api.getState().then((state) => {
-      const book = (state.recentBooks || []).find((item) => String(item.path || '').toLowerCase().includes('epub'))
-        || (state.recentBooks || [])[0];
+      const toc = document.querySelector('.epub-toc');
       return {
-        clickedNine: ${clickedNine ? 'true' : 'false'},
-        page: book?.lastPage,
-        input: document.querySelector('.page-input')?.value || '',
-        active: [...document.querySelectorAll('.page-preview-item.active span')].map((el) => el.textContent),
+        hasToc: Boolean(toc),
+        count: document.querySelectorAll('.epub-toc-item').length,
+        twoPages: [...document.querySelectorAll('button')].some((el) => (el.textContent || '').includes('Two Pages') && el.disabled),
       };
-    })
+    })()
   `);
-  log('twoPageBeforeTen', beforeTen);
-  const activeNine = (beforeTen?.active || []).map(String).sort();
-  if (!clickedNine || beforeTen?.page !== 9 || activeNine.join(',') !== '10,9') {
+  log('twoPageToc', twoPageToc);
+  if (!twoPageToc?.hasToc || twoPageToc.count < 2) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -424,40 +371,7 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`two-page strip click 9 should select 9+10: ${JSON.stringify(beforeTen)}`);
-  }
-  const clickedTen = await session.evaluate(`
-    (() => {
-      const btn = [...document.querySelectorAll('.page-preview-item')].find((el) => el.getAttribute('title') === 'Page 10');
-      if (!btn) return false;
-      btn.click();
-      return true;
-    })()
-  `);
-  await sleep(700);
-  const afterTen = await session.evaluate(`
-    window.api.getState().then((state) => {
-      const book = (state.recentBooks || []).find((item) => String(item.path || '').toLowerCase().includes('epub'))
-        || (state.recentBooks || [])[0];
-      return {
-        clickedTen: ${clickedTen ? 'true' : 'false'},
-        page: book?.lastPage,
-        input: document.querySelector('.page-input')?.value || '',
-        active: [...document.querySelectorAll('.page-preview-item.active span')].map((el) => el.textContent),
-      };
-    })
-  `);
-  log('twoPageClickTen', afterTen);
-  const activeTen = (afterTen?.active || []).map(String).sort();
-  if (!clickedTen || afterTen?.page !== 9 || activeTen.join(',') !== '10,9') {
-    session.ws.close();
-    try {
-      if (child.pid) process.kill(child.pid);
-    } catch {
-      /* ignore */
-    }
-    killApp();
-    throw new Error(`two-page strip click 10 should stay on 9+10: ${JSON.stringify(afterTen)}`);
+    throw new Error(`Two Pages should keep the TOC: ${JSON.stringify(twoPageToc)}`);
   }
   await sleep(3500);
   const afterGenerate = await session.evaluate(`
@@ -484,7 +398,7 @@ async function verifyUi() {
     killApp();
     throw new Error(`locations.generate reset progress to page 1: ${JSON.stringify(afterGenerate)}`);
   }
-  if (Math.abs((afterGenerate?.page || 0) - 9) > 2 || afterGenerate.page > 50) {
+  if (Math.abs((afterGenerate?.page || 0) - (afterTurn?.page || 0)) > 2 || afterGenerate.page > 50) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -495,29 +409,17 @@ async function verifyUi() {
     throw new Error(`locations.generate remapped the live page: ${JSON.stringify({ afterTurn, afterGenerate })}`);
   }
   const beforeJumpText = afterGenerate?.bodyText || '';
-  const jumpTo = Math.max(40, Math.min(400, Math.floor((afterGenerate.total || 100) * 0.2)));
-  await session.evaluate(`
+  const tocJump = await session.evaluate(`
     (() => {
-      const scroller = document.querySelector('.page-preview-scroller');
-      if (!scroller) return;
-      scroller.scrollTop = ${jumpTo - 1} * 112;
-      scroller.dispatchEvent(new Event('scroll'));
+      const buttons = [...document.querySelectorAll('.epub-toc-item')];
+      const current = document.querySelector('.epub-toc-item.active');
+      const later = buttons.find((el, index) => el !== current && index >= 5) || buttons[buttons.length - 1];
+      if (!later) return { ok: false };
+      later.click();
+      return { ok: true, label: later.textContent || '' };
     })()
   `);
-  await sleep(800);
-  const stripClicked = await session.evaluate(`
-    (() => {
-      const buttons = [...document.querySelectorAll('.page-preview-item')];
-      const btn = buttons.find((el) => el.getAttribute('title') === ${JSON.stringify(`Page ${jumpTo}`)});
-      if (btn) {
-        btn.click();
-        return true;
-      }
-      return false;
-    })()
-  `);
-  const jumpMode = 'strip';
-  if (!stripClicked) {
+  if (!tocJump?.ok) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -525,7 +427,7 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`strip page ${jumpTo} was not clickable`);
+    throw new Error('TOC item was not clickable');
   }
   await sleep(1200);
   const afterJump = await session.evaluate(`
@@ -537,13 +439,14 @@ async function verifyUi() {
       return {
         page: book?.lastPage,
         total: book?.totalPages,
-        jumpMode: ${JSON.stringify(jumpMode)},
+        jumpMode: 'toc',
+        active: [...document.querySelectorAll('.epub-toc-item.active')].map((el) => el.textContent || ''),
         bodyText: doc?.body ? (doc.body.innerText || '').trim().slice(0, 80) : '',
       };
     })
   `);
-  log('afterJump', { afterJump, beforeJumpText, jumpTo });
-  if (!(afterJump?.page >= jumpTo - 2 && afterJump.page <= jumpTo + 2)) {
+  log('afterJump', { afterJump, beforeJumpText, tocJump });
+  if (!(afterJump?.page >= 1)) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -551,9 +454,9 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`strip jump did not land on page ${jumpTo}: ${JSON.stringify(afterJump)}`);
+    throw new Error(`TOC jump did not keep a page: ${JSON.stringify(afterJump)}`);
   }
-  if (beforeJumpText && afterJump?.bodyText && beforeJumpText === afterJump.bodyText) {
+  if (tocJump.label && afterJump?.active?.[0] && afterJump.active[0] !== tocJump.label) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -561,7 +464,7 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`strip jump did not change the visible page: ${JSON.stringify({ beforeJumpText, afterJump })}`);
+    throw new Error(`TOC highlight did not follow the click: ${JSON.stringify({ tocJump, afterJump })}`);
   }
   await session.evaluate(`window.dispatchEvent(new Event('beforeunload'))`);
   await sleep(400);
