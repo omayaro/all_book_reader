@@ -306,8 +306,8 @@ async function verifyUi() {
         return {
           hasToc: Boolean(toc),
           hasStrip: Boolean(strip),
-          tocRight: tr ? Math.round(tr.right) : 0,
-          stageLeft: st ? Math.round(st.left) : 0,
+          tocLeft: tr ? Math.round(tr.left) : 0,
+          stageRight: st ? Math.round(st.right) : 0,
           count: labels.length,
           active: [...document.querySelectorAll('.epub-toc-item.active')].map((el) => el.textContent || ''),
           labels: labels.slice(0, 8),
@@ -338,7 +338,7 @@ async function verifyUi() {
     killApp();
     throw new Error('EPUB still shows the page strip');
   }
-  if (!(tocLayout.tocRight <= tocLayout.stageLeft + 4)) {
+  if (!(tocLayout.tocLeft + 4 >= tocLayout.stageRight)) {
     session.ws.close();
     try {
       if (child.pid) process.kill(child.pid);
@@ -346,7 +346,7 @@ async function verifyUi() {
       /* ignore */
     }
     killApp();
-    throw new Error(`EPUB TOC is not on the left: ${JSON.stringify(tocLayout)}`);
+    throw new Error(`EPUB TOC is not on the right: ${JSON.stringify(tocLayout)}`);
   }
   await session.evaluate(`
     [...document.querySelectorAll('button')].find((el) => (el.textContent || '').includes('Two Pages'))?.click()
@@ -436,13 +436,14 @@ async function verifyUi() {
         || (state.recentBooks || [])[0];
       const iframe = document.querySelector('.epub-viewer iframe');
       const doc = iframe && iframe.contentDocument;
-      return {
-        page: book?.lastPage,
-        total: book?.totalPages,
-        jumpMode: 'toc',
-        active: [...document.querySelectorAll('.epub-toc-item.active')].map((el) => el.textContent || ''),
-        bodyText: doc?.body ? (doc.body.innerText || '').trim().slice(0, 80) : '',
-      };
+        return {
+          page: book?.lastPage,
+          total: book?.totalPages,
+          lastCfi: book?.lastCfi || '',
+          jumpMode: 'toc',
+          active: [...document.querySelectorAll('.epub-toc-item.active')].map((el) => el.textContent || ''),
+          bodyText: doc?.body ? (doc.body.innerText || '').trim().slice(0, 80) : '',
+        };
     })
   `);
   log('afterJump', { afterJump, beforeJumpText, tocJump });
@@ -455,6 +456,16 @@ async function verifyUi() {
     }
     killApp();
     throw new Error(`TOC jump did not keep a page: ${JSON.stringify(afterJump)}`);
+  }
+  if (!(afterJump?.lastCfi && String(afterJump.lastCfi).startsWith('epubcfi('))) {
+    session.ws.close();
+    try {
+      if (child.pid) process.kill(child.pid);
+    } catch {
+      /* ignore */
+    }
+    killApp();
+    throw new Error(`TOC jump did not save a CFI: ${JSON.stringify(afterJump)}`);
   }
   if (tocJump.label && afterJump?.active?.[0] && afterJump.active[0] !== tocJump.label) {
     session.ws.close();

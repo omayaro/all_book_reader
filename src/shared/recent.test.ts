@@ -3,6 +3,7 @@ import {
   clearRecentBooks,
   markMissingBooks,
   removeRecentBook,
+  sanitizeEpubCfi,
   updateRecentProgress,
   upsertRecentBook,
 } from './recent';
@@ -20,6 +21,7 @@ function book(partial: Partial<RecentBook> & Pick<RecentBook, 'id' | 'path'>): R
     path: partial.path,
     lastScrollRatio: partial.lastScrollRatio,
     lastByteOffset: partial.lastByteOffset,
+    lastCfi: partial.lastCfi,
   };
 }
 
@@ -48,6 +50,21 @@ describe('recent', () => {
     expect(updated[0]?.lastScrollRatio).toBe(0.42);
     expect(updated[0]?.lastByteOffset).toBe(12_345);
     expect(removeRecentBook(updated, 'b')).toHaveLength(1);
+  });
+
+  it('keeps an EPUB CFI when progress is saved', () => {
+    const cfi = 'epubcfi(/6/14!/4/2/2/2/1:0)';
+    const list = [book({ id: 'e', path: 'C:\\e.epub', format: 'epub', lastPage: 5 })];
+    const updated = updateRecentProgress(list, 'e', 5, 69, undefined, undefined, cfi);
+    expect(updated[0]?.lastCfi).toBe(cfi);
+    const pageOnly = updateRecentProgress(updated, 'e', 6, 69);
+    expect(pageOnly[0]?.lastCfi).toBe(cfi);
+  });
+
+  it('rejects junk CFI strings', () => {
+    expect(sanitizeEpubCfi('epubcfi(/6/4!/4/2/1:0)')).toBe('epubcfi(/6/4!/4/2/1:0)');
+    expect(sanitizeEpubCfi('not-a-cfi')).toBeUndefined();
+    expect(sanitizeEpubCfi('')).toBeUndefined();
   });
 
   it('preserves byte offset when only ratio is updated', () => {

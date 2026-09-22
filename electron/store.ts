@@ -62,6 +62,7 @@ export class AppStore {
     totalPages?: number,
     lastScrollRatio?: number,
     lastByteOffset?: number,
+    lastCfi?: string,
   ): RecentBook[] {
     this.state.recentBooks = updateRecentProgress(
       this.state.recentBooks,
@@ -70,6 +71,7 @@ export class AppStore {
       totalPages,
       lastScrollRatio,
       lastByteOffset,
+      lastCfi,
     );
     this.persist();
     return [...this.state.recentBooks];

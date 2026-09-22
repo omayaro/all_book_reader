@@ -10,6 +10,7 @@ import {
   epubSavedTotalIsLocationMap,
   epubUiSpineIndex,
 } from '../shared/epubResume';
+import { sanitizeEpubCfi } from '../shared/recent';
 import {
   buildEpubToc,
   flattenNavItems,
@@ -32,10 +33,11 @@ interface EpubViewerProps {
   pageMode: PageMode;
   page: number;
   savedTotalPages: number;
+  resumeCfi?: string;
   searchQuery: string;
   searchDirection: 'next' | 'prev' | null;
   searchNonce: number;
-  onPageChange: (page: number, totalPages: number) => void;
+  onPageChange: (page: number, totalPages: number, lastCfi?: string) => void;
   onSearchDone: (message: string) => void;
   onNavigatorReady?: (navigator: EpubNavigator | null) => void;
   onTocChange?: (items: EpubTocItem[]) => void;
@@ -105,6 +107,7 @@ const EpubHost = memo(function EpubHost({
   bookId,
   pageMode,
   pageRef,
+  resumeCfiRef,
   savedTotalRef,
   syncedPageRef,
   initialPageRef,
@@ -121,6 +124,7 @@ const EpubHost = memo(function EpubHost({
   bookId: string;
   pageMode: PageMode;
   pageRef: { current: number };
+  resumeCfiRef: { current: string | undefined };
   savedTotalRef: { current: number };
   syncedPageRef: { current: number };
   initialPageRef: { current: number };
@@ -129,7 +133,7 @@ const EpubHost = memo(function EpubHost({
   externalJumpRef: { current: boolean };
   bookRef: { current: Book | null };
   renditionRef: { current: Rendition | null };
-  onPageChangeRef: { current: (page: number, totalPages: number) => void };
+  onPageChangeRef: { current: (page: number, totalPages: number, lastCfi?: string) => void };
   onNavigatorReadyRef: { current: EpubViewerProps['onNavigatorReady'] };
   onTocChangeRef: { current: EpubViewerProps['onTocChange'] };
   onTocActiveRef: { current: EpubViewerProps['onTocActive'] };
@@ -183,10 +187,10 @@ const EpubHost = memo(function EpubHost({
 
     const liveTotal = (): number => Math.max(1, linearSpineUrls(book).length || 1);
 
-    const reportPage = (next: number, total: number): void => {
+    const reportPage = (next: number, total: number, cfi?: string): void => {
       const page = clampPage(next, total);
       syncedPageRef.current = page;
-      onPageChangeRef.current(page, total);
+      onPageChangeRef.current(page, total, sanitizeEpubCfi(cfi));
     };
 
     const runLocationGenerate = (): void => {
@@ -265,10 +269,16 @@ const EpubHost = memo(function EpubHost({
         for (const index of epubOpeningSpineIndices(spineIndex, pageMode === 'two')) {
           openingSpines.add(index);
         }
-        await rendition.display(spineIndex);
+        const resumeCfi = sanitizeEpubCfi(resumeCfiRef.current);
+        try {
+          if (resumeCfi) await rendition.display(resumeCfi);
+          else await rendition.display(spineIndex);
+        } catch {
+          await rendition.display(spineIndex);
+        }
         if (cancelled) return;
         console.info(
-          `[epub] first display ${Date.now() - openedAt}ms spine=${spineIndex + 1}/${spineCount}`,
+          `[epub] first display ${Date.now() - openedAt}ms spine=${spineIndex + 1}/${spineCount}${resumeCfi ? ' cfi' : ''}`,
         );
         lastPercentage = 0;
         const uiPage = spineIndex + 1;
@@ -317,7 +327,7 @@ const EpubHost = memo(function EpubHost({
           externalJumpRef.current = false;
           lastPercentage = percentage;
           if (spineIndex >= 0) {
-            reportPage(spineIndex + 1, liveTotal());
+            reportPage(spineIndex + 1, liveTotal(), location.start?.cfi);
             const href = typeof location?.start?.href === 'string' ? location.start.href : '';
             const hash = href.includes('#') ? href.slice(href.indexOf('#') + 1) : '';
             publishTocActive(spineIndex, hash);
@@ -336,7 +346,7 @@ const EpubHost = memo(function EpubHost({
         pendingDelta = 0;
         lastPercentage = percentage;
         if (spineIndex >= 0) {
-          reportPage(spineIndex + 1, liveTotal());
+          reportPage(spineIndex + 1, liveTotal(), location.start?.cfi);
           const href = typeof location?.start?.href === 'string' ? location.start.href : '';
           const hash = href.includes('#') ? href.slice(href.indexOf('#') + 1) : '';
           publishTocActive(spineIndex, hash);
@@ -420,6 +430,7 @@ export function EpubViewer({
   pageMode,
   page,
   savedTotalPages,
+  resumeCfi,
   searchQuery,
   searchDirection,
   searchNonce,
@@ -436,6 +447,8 @@ export function EpubViewer({
   savedTotalRef.current = savedTotalPages;
   const pageRef = useRef(page);
   pageRef.current = page;
+  const resumeCfiRef = useRef(resumeCfi);
+  resumeCfiRef.current = resumeCfi;
   const initialPageRef = useRef(page);
   const allowResumeSnapRef = useRef(true);
   const generateDoneRef = useRef(false);
@@ -509,6 +522,7 @@ export function EpubViewer({
         bookId={bookId}
         pageMode={pageMode}
         pageRef={pageRef}
+        resumeCfiRef={resumeCfiRef}
         savedTotalRef={savedTotalRef}
         syncedPageRef={syncedPageRef}
         initialPageRef={initialPageRef}

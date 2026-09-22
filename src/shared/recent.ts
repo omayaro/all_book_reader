@@ -9,6 +9,7 @@ export interface UpsertRecentInput {
   totalPages?: number;
   lastScrollRatio?: number;
   lastByteOffset?: number;
+  lastCfi?: string;
   title?: string;
   lastOpenedAt?: string;
   missing?: boolean;
@@ -38,10 +39,19 @@ export function upsertRecentBook(
       typeof input.lastByteOffset === 'number'
         ? Math.max(0, Math.floor(input.lastByteOffset))
         : existing?.lastByteOffset,
+    lastCfi: sanitizeEpubCfi(input.lastCfi) ?? existing?.lastCfi,
   };
 
   const filtered = list.filter((b) => b.id !== next.id && b.path !== next.path);
   return [next, ...filtered].slice(0, Math.max(1, maxRecent));
+}
+
+export function sanitizeEpubCfi(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length < 8 || trimmed.length > 4000) return undefined;
+  if (!/^epubcfi\(/i.test(trimmed) || !trimmed.endsWith(')')) return undefined;
+  return trimmed;
 }
 
 export function clampScrollRatio(value: number): number {
@@ -56,6 +66,7 @@ export function updateRecentProgress(
   totalPages?: number,
   lastScrollRatio?: number,
   lastByteOffset?: number,
+  lastCfi?: string,
 ): RecentBook[] {
   return list.map((book) => {
     if (book.id !== idOrPath && book.path !== idOrPath) return book;
@@ -71,6 +82,7 @@ export function updateRecentProgress(
         typeof lastByteOffset === 'number'
           ? Math.max(0, Math.floor(lastByteOffset))
           : book.lastByteOffset,
+      lastCfi: sanitizeEpubCfi(lastCfi) ?? book.lastCfi,
       lastOpenedAt: new Date().toISOString(),
       missing: false,
     };

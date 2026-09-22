@@ -35,6 +35,7 @@ export interface ElectronApi {
     totalPages?: number,
     lastScrollRatio?: number,
     lastByteOffset?: number,
+    lastCfi?: string,
   ) => Promise<AppState['recentBooks']>;
   removeRecent: (idOrPath: string) => Promise<AppState['recentBooks']>;
   clearRecent: () => Promise<AppState['recentBooks']>;
@@ -57,7 +58,7 @@ const api: ElectronApi = {
   readEpubEntry: (entryPath: string, priority?: 'high' | 'low') =>
     ipcRenderer.invoke('epub:readEntry', entryPath, priority),
   readTxtPage: (page) => ipcRenderer.invoke('txt:readPage', page),
-  updateProgress: (idOrPath, lastPage, totalPages, lastScrollRatio, lastByteOffset) =>
+  updateProgress: (idOrPath, lastPage, totalPages, lastScrollRatio, lastByteOffset, lastCfi) =>
     ipcRenderer.invoke(
       'books:updateProgress',
       idOrPath,
@@ -65,6 +66,7 @@ const api: ElectronApi = {
       totalPages,
       lastScrollRatio,
       lastByteOffset,
+      lastCfi,
     ),
   removeRecent: (idOrPath) => ipcRenderer.invoke('books:removeRecent', idOrPath),
   clearRecent: () => ipcRenderer.invoke('books:clearRecent'),

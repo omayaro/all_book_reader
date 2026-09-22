@@ -267,6 +267,7 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
     totalPages,
     lastScrollRatio: existing?.lastScrollRatio,
     lastByteOffset: existing?.lastByteOffset,
+    lastCfi: existing?.lastCfi,
   };
 
   if (format === 'txt') {
@@ -320,7 +321,9 @@ async function openBookFromPath(filePath: string): Promise<OpenBookResult | null
         totalPages: spineCount,
         lastScrollRatio: existing?.lastScrollRatio,
         lastByteOffset: existing?.lastByteOffset,
+        lastCfi: existing?.lastCfi,
       });
+      result.lastCfi = existing?.lastCfi;
       console.info(
         `[epub] session open ${Date.now() - tOpen}ms entries=${epub.entries.length} spine=${epub.spineHrefs.length}`,
       );
@@ -497,6 +500,7 @@ function registerIpc(): void {
       totalPages?: number,
       lastScrollRatio?: number,
       lastByteOffset?: number,
+      lastCfi?: string,
     ) => {
       return store.updateProgress(
         idOrPath,
@@ -504,6 +508,7 @@ function registerIpc(): void {
         totalPages,
         lastScrollRatio,
         lastByteOffset,
+        lastCfi,
       );
     },
   );

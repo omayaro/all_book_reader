@@ -325,7 +325,7 @@ input {
   width: 220px;
   min-width: 0;
   min-height: 0;
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
   background: var(--bg-elevated);
   display: flex;
   flex-direction: column;

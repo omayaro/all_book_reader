@@ -34,6 +34,7 @@ export interface ElectronApi {
     totalPages?: number,
     lastScrollRatio?: number,
     lastByteOffset?: number,
+    lastCfi?: string,
   ) => Promise<AppState['recentBooks']>;
   removeRecent: (idOrPath: string) => Promise<AppState['recentBooks']>;
   clearRecent: () => Promise<AppState['recentBooks']>;
