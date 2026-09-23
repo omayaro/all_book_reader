@@ -23,6 +23,7 @@ export function EpubTocPanel({ items, activeIndex, onSelect }: EpubTocPanelProps
             type="button"
             ref={index === activeIndex ? activeRef : undefined}
             className={`epub-toc-item${index === activeIndex ? ' active' : ''}`}
+            style={{ paddingLeft: `calc(0.75rem + ${item.depth * 12}px)` }}
             onClick={() => onSelect(item)}
             title={item.label}
           >

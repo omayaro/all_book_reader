@@ -3,6 +3,8 @@ import { normalizeEpubEntryPath, resolveZipPath } from './epubEntryPath';
 export interface EpubTocNode {
   label: string;
   href: string;
+  /** 0 = part, 1 = chapter under that part. */
+  depth: number;
 }
 
 export interface EpubTocItem {
@@ -11,6 +13,7 @@ export interface EpubTocItem {
   href: string;
   hash: string;
   spineIndex: number;
+  depth: number;
 }
 
 function decodeXmlText(raw: string): string {
@@ -75,6 +78,7 @@ export function assignTocSpineIndices(
       href: file || node.href,
       hash,
       spineIndex: spineIndexForHref(node.href, spineHrefs),
+      depth: Math.max(0, Math.floor(node.depth) || 0),
     };
   });
 }
@@ -90,6 +94,7 @@ export function tocFromSpine(spineHrefs: string[]): EpubTocItem[] {
       href: file,
       hash: '',
       spineIndex: index,
+      depth: 0,
     };
   });
 }
@@ -133,20 +138,23 @@ export function flattenNavItems(
   baseFile = '',
 ): EpubTocNode[] {
   const out: EpubTocNode[] = [];
-  const walk = (list: Array<{ label?: string; href?: string; subitems?: unknown[] }>) => {
+  const walk = (
+    list: Array<{ label?: string; href?: string; subitems?: unknown[] }>,
+    depth: number,
+  ) => {
     for (const node of list) {
       const label = decodeXmlText(String(node.label ?? ''));
       const href = String(node.href ?? '').trim();
       if (label && href) {
         const resolved = baseFile && !/^[a-z][a-z0-9+.-]*:/i.test(href) ? resolveZipPath(baseFile, href) : href;
-        out.push({ label, href: resolved });
+        out.push({ label, href: resolved, depth });
       }
       if (Array.isArray(node.subitems) && node.subitems.length) {
-        walk(node.subitems as Array<{ label?: string; href?: string; subitems?: unknown[] }>);
+        walk(node.subitems as Array<{ label?: string; href?: string; subitems?: unknown[] }>, depth + 1);
       }
     }
   };
-  walk(nodes);
+  walk(nodes, 0);
   return out;
 }
 
@@ -169,7 +177,7 @@ export function parseNavXhtml(xml: string, navPath: string): EpubTocNode[] {
     xml;
   const nodes: EpubTocNode[] = [];
   eachAnchor(toc, (href, label) => {
-    nodes.push({ label, href: resolveZipPath(navPath, href) });
+    nodes.push({ label, href: resolveZipPath(navPath, href), depth: 0 });
   });
   return nodes;
 }
@@ -183,7 +191,7 @@ export function parseNcx(xml: string, ncxPath: string): EpubTocNode[] {
   while ((match = re.exec(xml)) !== null) {
     const label = decodeXmlText(match[1] ?? '');
     const src = match[2];
-    if (label && src) nodes.push({ label, href: resolveZipPath(ncxPath, src) });
+    if (label && src) nodes.push({ label, href: resolveZipPath(ncxPath, src), depth: 0 });
   }
   return nodes;
 }
