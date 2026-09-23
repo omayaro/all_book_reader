@@ -10,6 +10,13 @@ import {
   epubSavedTotalIsLocationMap,
   epubUiSpineIndex,
 } from '../shared/epubResume';
+import { sanitizeEpubCfi } from '../shared/recent';
+import {
+  buildEpubToc,
+  flattenNavItems,
+  tocIndexForSpine,
+  type EpubTocItem,
+} from '../shared/epubToc';
 import { loadEpubFontFaceCss, rewriteSectionAssets } from '../epubAssets';
 import { clearEpubEntryCache, readEpubEntryCached } from '../epubEntryCache';
 import { epubDirectoryUrl, epubIpcRequest } from '../epubRequest';
@@ -17,6 +24,7 @@ import { epubDirectoryUrl, epubIpcRequest } from '../epubRequest';
 export interface EpubNavigator {
   next: () => Promise<void>;
   prev: () => Promise<void>;
+  displayItem: (item: EpubTocItem) => Promise<void>;
 }
 
 interface EpubViewerProps {
@@ -25,12 +33,15 @@ interface EpubViewerProps {
   pageMode: PageMode;
   page: number;
   savedTotalPages: number;
+  resumeCfi?: string;
   searchQuery: string;
   searchDirection: 'next' | 'prev' | null;
   searchNonce: number;
-  onPageChange: (page: number, totalPages: number) => void;
+  onPageChange: (page: number, totalPages: number, lastCfi?: string) => void;
   onSearchDone: (message: string) => void;
   onNavigatorReady?: (navigator: EpubNavigator | null) => void;
+  onTocChange?: (items: EpubTocItem[]) => void;
+  onTocActive?: (index: number) => void;
 }
 
 type SpineSection = { linear?: boolean; url?: string; href?: string };
@@ -48,6 +59,31 @@ function linearSpineUrls(book: Book): string[] {
     if (section.linear && section.url) urls.push(section.url);
   });
   return urls;
+}
+
+function linearSpineHrefs(book: Book): string[] {
+  const hrefs: string[] = [];
+  book.spine.each((section: SpineSection) => {
+    if (section.linear && section.href) hrefs.push(section.href);
+  });
+  return hrefs;
+}
+
+function displayTocItem(rendition: Rendition, item: EpubTocItem): Promise<void> {
+  const target =
+    item.hash && item.href ? `${item.href}#${item.hash}` : item.href;
+  if (item.spineIndex >= 0 && !item.hash) {
+    return Promise.resolve(rendition.display(item.spineIndex)).then(() => undefined);
+  }
+  if (target) {
+    return Promise.resolve(rendition.display(target)).catch(() => {
+      if (item.spineIndex >= 0) return Promise.resolve(rendition.display(item.spineIndex));
+    }).then(() => undefined);
+  }
+  if (item.spineIndex >= 0) {
+    return Promise.resolve(rendition.display(item.spineIndex)).then(() => undefined);
+  }
+  return Promise.resolve();
 }
 
 function prefetchSpine(book: Book, spineIndex: number): void {
@@ -71,6 +107,7 @@ const EpubHost = memo(function EpubHost({
   bookId,
   pageMode,
   pageRef,
+  resumeCfiRef,
   savedTotalRef,
   syncedPageRef,
   initialPageRef,
@@ -81,10 +118,13 @@ const EpubHost = memo(function EpubHost({
   renditionRef,
   onPageChangeRef,
   onNavigatorReadyRef,
+  onTocChangeRef,
+  onTocActiveRef,
 }: {
   bookId: string;
   pageMode: PageMode;
   pageRef: { current: number };
+  resumeCfiRef: { current: string | undefined };
   savedTotalRef: { current: number };
   syncedPageRef: { current: number };
   initialPageRef: { current: number };
@@ -93,8 +133,10 @@ const EpubHost = memo(function EpubHost({
   externalJumpRef: { current: boolean };
   bookRef: { current: Book | null };
   renditionRef: { current: Rendition | null };
-  onPageChangeRef: { current: (page: number, totalPages: number) => void };
+  onPageChangeRef: { current: (page: number, totalPages: number, lastCfi?: string) => void };
   onNavigatorReadyRef: { current: EpubViewerProps['onNavigatorReady'] };
+  onTocChangeRef: { current: EpubViewerProps['onTocChange'] };
+  onTocActiveRef: { current: EpubViewerProps['onTocActive'] };
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
 
@@ -113,7 +155,8 @@ const EpubHost = memo(function EpubHost({
     const rendition = book.renderTo(host, {
       width: '100%',
       height: '100%',
-      flow: 'paginated',
+      flow: pageMode === 'two' ? 'paginated' : 'scrolled',
+      manager: pageMode === 'two' ? 'default' : 'continuous',
       spread: pageMode === 'two' ? 'always' : 'none',
     });
     renditionRef.current = rendition;
@@ -144,10 +187,10 @@ const EpubHost = memo(function EpubHost({
 
     const liveTotal = (): number => Math.max(1, linearSpineUrls(book).length || 1);
 
-    const reportPage = (next: number, total: number): void => {
+    const reportPage = (next: number, total: number, cfi?: string): void => {
       const page = clampPage(next, total);
       syncedPageRef.current = page;
-      onPageChangeRef.current(page, total);
+      onPageChangeRef.current(page, total, sanitizeEpubCfi(cfi));
     };
 
     const runLocationGenerate = (): void => {
@@ -178,6 +221,11 @@ const EpubHost = memo(function EpubHost({
       allowResumeSnapRef.current = false;
       scheduleLocationGenerate();
     };
+    const tocItems: EpubTocItem[] = [];
+    const publishTocActive = (spineIndex: number, hash = ''): void => {
+      if (tocItems.length < 1) return;
+      onTocActiveRef.current?.(tocIndexForSpine(tocItems, spineIndex, hash));
+    };
     const navigator: EpubNavigator = {
       next: () => {
         markUserNav();
@@ -188,6 +236,11 @@ const EpubHost = memo(function EpubHost({
         markUserNav();
         pendingDelta = -1;
         return Promise.resolve(rendition.prev()).then(() => undefined);
+      },
+      displayItem: (item) => {
+        markUserNav();
+        externalJumpRef.current = true;
+        return displayTocItem(rendition, item);
       },
     };
     onNavigatorReadyRef.current?.(navigator);
@@ -216,16 +269,38 @@ const EpubHost = memo(function EpubHost({
         for (const index of epubOpeningSpineIndices(spineIndex, pageMode === 'two')) {
           openingSpines.add(index);
         }
-        await rendition.display(spineIndex);
+        const resumeCfi = sanitizeEpubCfi(resumeCfiRef.current);
+        try {
+          if (resumeCfi) await rendition.display(resumeCfi);
+          else await rendition.display(spineIndex);
+        } catch {
+          await rendition.display(spineIndex);
+        }
         if (cancelled) return;
         console.info(
-          `[epub] first display ${Date.now() - openedAt}ms spine=${spineIndex + 1}/${spineCount}`,
+          `[epub] first display ${Date.now() - openedAt}ms spine=${spineIndex + 1}/${spineCount}${resumeCfi ? ' cfi' : ''}`,
         );
         lastPercentage = 0;
         const uiPage = spineIndex + 1;
         syncedPageRef.current = uiPage;
         onPageChangeRef.current(uiPage, spineCount);
         prefetchSpine(book, spineIndex);
+        void book.loaded.navigation
+          .then(() => {
+            if (cancelled) return;
+            const nodes = flattenNavItems(book.navigation.toc ?? []);
+            const items = buildEpubToc(nodes, linearSpineHrefs(book));
+            tocItems.splice(0, tocItems.length, ...items);
+            onTocChangeRef.current?.(items);
+            publishTocActive(spineIndex);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            const items = buildEpubToc([], linearSpineHrefs(book));
+            tocItems.splice(0, tocItems.length, ...items);
+            onTocChangeRef.current?.(items);
+            publishTocActive(spineIndex);
+          });
         scheduleLocationGenerate();
         void loadEpubFontFaceCss(book.resources).then((cssUrl) => {
           if (cancelled || !cssUrl) return;
@@ -243,7 +318,7 @@ const EpubHost = memo(function EpubHost({
 
     rendition.on(
       'relocated',
-      (location: { start?: { index?: number; percentage?: number; cfi?: string } }) => {
+      (location: { start?: { index?: number; percentage?: number; cfi?: string; href?: string } }) => {
         const spineIndex = typeof location?.start?.index === 'number' ? location.start.index : -1;
         const percentage =
           typeof location?.start?.percentage === 'number' ? location.start.percentage : lastPercentage;
@@ -251,6 +326,12 @@ const EpubHost = memo(function EpubHost({
         if (externalJumpRef.current) {
           externalJumpRef.current = false;
           lastPercentage = percentage;
+          if (spineIndex >= 0) {
+            reportPage(spineIndex + 1, liveTotal(), location.start?.cfi);
+            const href = typeof location?.start?.href === 'string' ? location.start.href : '';
+            const hash = href.includes('#') ? href.slice(href.indexOf('#') + 1) : '';
+            publishTocActive(spineIndex, hash);
+          }
           return;
         }
         if (pendingDelta === 0 && Date.now() < ignoreRelocateUntil) {
@@ -264,7 +345,12 @@ const EpubHost = memo(function EpubHost({
         allowResumeSnapRef.current = false;
         pendingDelta = 0;
         lastPercentage = percentage;
-        if (spineIndex >= 0) reportPage(spineIndex + 1, liveTotal());
+        if (spineIndex >= 0) {
+          reportPage(spineIndex + 1, liveTotal(), location.start?.cfi);
+          const href = typeof location?.start?.href === 'string' ? location.start.href : '';
+          const hash = href.includes('#') ? href.slice(href.indexOf('#') + 1) : '';
+          publishTocActive(spineIndex, hash);
+        }
       },
     );
 
@@ -344,12 +430,15 @@ export function EpubViewer({
   pageMode,
   page,
   savedTotalPages,
+  resumeCfi,
   searchQuery,
   searchDirection,
   searchNonce,
   onPageChange,
   onSearchDone,
   onNavigatorReady,
+  onTocChange,
+  onTocActive,
 }: EpubViewerProps) {
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
@@ -358,6 +447,8 @@ export function EpubViewer({
   savedTotalRef.current = savedTotalPages;
   const pageRef = useRef(page);
   pageRef.current = page;
+  const resumeCfiRef = useRef(resumeCfi);
+  resumeCfiRef.current = resumeCfi;
   const initialPageRef = useRef(page);
   const allowResumeSnapRef = useRef(true);
   const generateDoneRef = useRef(false);
@@ -366,6 +457,10 @@ export function EpubViewer({
   onNavigatorReadyRef.current = onNavigatorReady;
   const onPageChangeRef = useRef(onPageChange);
   onPageChangeRef.current = onPageChange;
+  const onTocChangeRef = useRef(onTocChange);
+  onTocChangeRef.current = onTocChange;
+  const onTocActiveRef = useRef(onTocActive);
+  onTocActiveRef.current = onTocActive;
 
   useEffect(() => {
     const rendition = renditionRef.current;
@@ -427,6 +522,7 @@ export function EpubViewer({
         bookId={bookId}
         pageMode={pageMode}
         pageRef={pageRef}
+        resumeCfiRef={resumeCfiRef}
         savedTotalRef={savedTotalRef}
         syncedPageRef={syncedPageRef}
         initialPageRef={initialPageRef}
@@ -437,6 +533,8 @@ export function EpubViewer({
         renditionRef={renditionRef}
         onPageChangeRef={onPageChangeRef}
         onNavigatorReadyRef={onNavigatorReadyRef}
+        onTocChangeRef={onTocChangeRef}
+        onTocActiveRef={onTocActiveRef}
       />
     </div>
   );

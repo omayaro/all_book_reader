@@ -21,6 +21,8 @@ export interface RecentBook {
   lastScrollRatio?: number;
   /** Absolute byte offset for TXT resume (preferred over ratio). */
   lastByteOffset?: number;
+  /** EPUB CFI for the first visible sentence (resume inside a chapter). */
+  lastCfi?: string;
 }
 
 export interface AppSettings {
@@ -69,4 +71,6 @@ export interface OpenBookResult {
   lastScrollRatio?: number;
   /** Absolute byte offset resume point for TXT. */
   lastByteOffset?: number;
+  /** EPUB CFI resume point for the first visible sentence. */
+  lastCfi?: string;
 }

@@ -4,10 +4,12 @@ import { Home } from './components/Home';
 import { TxtViewer } from './components/TxtViewer';
 import { PdfViewer } from './components/PdfViewer';
 import { EpubViewer, type EpubNavigator } from './components/EpubViewer';
+import { EpubTocPanel } from './components/EpubTocPanel';
 import { ComicViewer } from './components/ComicViewer';
 import { PagePreviewStrip } from './components/PagePreviewStrip';
+import type { EpubTocItem } from './shared/epubToc';
 import { clampFontSize, clampZoom, isThemeSetting, mergeSettings, zoomAtMax, zoomAtMin } from './shared/settings';
-import { clampScrollRatio } from './shared/recent';
+import { clampScrollRatio, sanitizeEpubCfi } from './shared/recent';
 import { nextTheme, resolveTheme } from './shared/theme';
 import { isSupportedBookFile } from './shared/format';
 import { shouldShowUpdateBanner } from './shared/appUpdate';
@@ -17,7 +19,7 @@ import {
   isReadingDirection,
   type ReadingDirection,
 } from './shared/comic';
-import { parsePageInput, sanitizePageDigits, spreadStartPage, stepPage } from './shared/pageMode';
+import { parsePageInput, sanitizePageDigits, stepPage } from './shared/pageMode';
 import type {
   AppSettings,
   FitMode,
@@ -50,8 +52,11 @@ export default function App() {
   const [searchDirection, setSearchDirection] = useState<'next' | 'prev' | null>(null);
   const [searchNonce, setSearchNonce] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [epubToc, setEpubToc] = useState<EpubTocItem[]>([]);
+  const [epubTocActive, setEpubTocActive] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const txtProgressRef = useRef({ ratio: 0, byteOffset: 0 });
+  const epubCfiRef = useRef<string | undefined>(undefined);
   const readerStageRef = useRef<HTMLDivElement>(null);
   const epubNavRef = useRef<EpubNavigator | null>(null);
   const resolvedTheme = resolveTheme(settings.theme);
@@ -77,9 +82,12 @@ export default function App() {
         byteOffset: Math.max(0, Math.floor(result.lastByteOffset ?? 0)),
       };
     }
+    epubCfiRef.current = result.format === 'epub' ? sanitizeEpubCfi(result.lastCfi) : undefined;
     setBook(result);
     setPage(startPage);
     setPageInput(String(startPage));
+    setEpubToc([]);
+    setEpubTocActive(0);
     setStatus(`Opened ${result.title}`);
     void (async () => {
       await refreshState();
@@ -135,7 +143,14 @@ export default function App() {
       if (book.format === 'txt') {
         await flushTxtProgress();
       } else {
-        await getApi().updateProgress(book.id, page, book.totalPages);
+        await getApi().updateProgress(
+          book.id,
+          page,
+          book.totalPages,
+          undefined,
+          undefined,
+          book.format === 'epub' ? epubCfiRef.current : undefined,
+        );
       }
       const nextPath = await getApi().resolveSeriesSibling(book.path, delta);
       if (!nextPath) {
@@ -153,11 +168,20 @@ export default function App() {
       if (book.format === 'txt') {
         await flushTxtProgress();
       } else {
-        await getApi().updateProgress(book.id, page, book.totalPages);
+        await getApi().updateProgress(
+          book.id,
+          page,
+          book.totalPages,
+          undefined,
+          undefined,
+          book.format === 'epub' ? epubCfiRef.current : undefined,
+        );
       }
     }
     await getApi().closeBook();
     setBook(null);
+    setEpubToc([]);
+    setEpubTocActive(0);
     setStatus('Ready');
     await refreshState();
   }, [book, page, refreshState, flushTxtProgress]);
@@ -193,7 +217,7 @@ export default function App() {
   );
 
   const scheduleProgressSave = useCallback(
-    (nextPage: number, totalPages: number) => {
+    (nextPage: number, totalPages: number, lastCfi?: string) => {
       if (!book) return;
       if (book.format === 'txt') {
         void getApi()
@@ -211,15 +235,26 @@ export default function App() {
           .catch(() => setStatus('Failed to load text page.'));
         return;
       }
+      const cfi = book.format === 'epub' ? sanitizeEpubCfi(lastCfi) : undefined;
+      if (cfi) epubCfiRef.current = cfi;
       setPage(nextPage);
       setPageInput(String(nextPage));
       setBook((current) =>
-        current ? { ...current, lastPage: nextPage, totalPages } : current,
+        current
+          ? { ...current, lastPage: nextPage, totalPages, lastCfi: cfi ?? current.lastCfi }
+          : current,
       );
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         void getApi()
-          .updateProgress(book.id, nextPage, totalPages)
+          .updateProgress(
+            book.id,
+            nextPage,
+            totalPages,
+            undefined,
+            undefined,
+            book.format === 'epub' ? epubCfiRef.current : undefined,
+          )
           .then(setRecentBooks);
       }, 300);
     },
@@ -416,7 +451,14 @@ export default function App() {
         void flushTxtProgress();
         return;
       }
-      void getApi().updateProgress(book.id, page, book.totalPages);
+      void getApi().updateProgress(
+        book.id,
+        page,
+        book.totalPages,
+        undefined,
+        undefined,
+        book.format === 'epub' ? epubCfiRef.current : undefined,
+      );
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
@@ -803,6 +845,7 @@ export default function App() {
                 pageMode={settings.pageMode}
                 page={page}
                 savedTotalPages={book.totalPages}
+                resumeCfi={book.lastCfi}
                 searchQuery={searchQuery}
                 searchDirection={searchDirection}
                 searchNonce={searchNonce}
@@ -811,6 +854,8 @@ export default function App() {
                 onNavigatorReady={(nav) => {
                   epubNavRef.current = nav;
                 }}
+                onTocChange={setEpubToc}
+                onTocActive={setEpubTocActive}
               />
             )}
             {book.format === 'comic' && (
@@ -830,7 +875,24 @@ export default function App() {
               />
             )}
           </div>
-          {book.totalPages > 0 && (
+          {book.format === 'epub' && epubToc.length > 0 && (
+            <EpubTocPanel
+              items={epubToc}
+              activeIndex={epubTocActive}
+              onSelect={(item) => {
+                setEpubTocActive(
+                  Math.max(0, epubToc.findIndex((row) => row.id === item.id)),
+                );
+                if (item.spineIndex >= 0) {
+                  scheduleProgressSave(item.spineIndex + 1, book.totalPages);
+                }
+                void epubNavRef.current?.displayItem(item);
+                setStatus(`Jumped to ${item.label}`);
+                focusReader();
+              }}
+            />
+          )}
+          {book.totalPages > 0 && book.format !== 'epub' && (
             <PagePreviewStrip
               format={book.format}
               bookId={book.id}
@@ -840,12 +902,8 @@ export default function App() {
               readingDirection={settings.readingDirection}
               pdfData={book.format === 'pdf' ? book.fileData : undefined}
               onSelectPage={(next) => {
-                const target =
-                  settings.pageMode === 'two' && book.format === 'epub'
-                    ? spreadStartPage(next)
-                    : next;
-                scheduleProgressSave(target, book.totalPages);
-                setStatus(`Jumped to page ${target}`);
+                scheduleProgressSave(next, book.totalPages);
+                setStatus(`Jumped to page ${next}`);
                 focusReader();
               }}
             />
