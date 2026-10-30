@@ -3,6 +3,15 @@ import { clampPage } from './pageMode';
 export const PAGE_STRIP_ITEM_HEIGHT = 112;
 export const PAGE_STRIP_OVERSCAN = 4;
 
+/**
+ * Thumb-cache identity for the page strip.
+ * totalPages is intentionally excluded: a first-open jump from 1 to numPages
+ * must keep the loaded PDF document instead of wiping it.
+ */
+export function pageStripCacheIdentity(bookId: string, format: string): string {
+  return `${format}:${bookId}`;
+}
+
 /** Inclusive 1-based page range visible in a virtualized strip. */
 export function visibleStripPages(
   scrollTop: number,

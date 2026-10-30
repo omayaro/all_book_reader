@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { pageFromStripOffset, txtThumbPreviewText, visibleStripPages, htmlToThumbText, firstHtmlImgSrc, epubThumbPreviewText } from './pageStrip';
+import {
+  pageFromStripOffset,
+  pageStripCacheIdentity,
+  txtThumbPreviewText,
+  visibleStripPages,
+  htmlToThumbText,
+  firstHtmlImgSrc,
+  epubThumbPreviewText,
+} from './pageStrip';
 
 describe('pageStrip', () => {
   it('computes visible page range with overscan', () => {
@@ -32,6 +40,16 @@ describe('pageStrip', () => {
       '../Images/cover.jpg',
     );
     expect(firstHtmlImgSrc('<img src="data:image/png;base64,xx">')).toBeNull();
+  });
+
+  it('keeps strip cache identity when totalPages is discovered after open', () => {
+    expect(pageStripCacheIdentity('book-a', 'pdf')).toBe(pageStripCacheIdentity('book-a', 'pdf'));
+    expect(pageStripCacheIdentity('book-a', 'pdf')).not.toBe(
+      pageStripCacheIdentity('book-b', 'pdf'),
+    );
+    expect(pageStripCacheIdentity('book-a', 'pdf')).not.toBe(
+      pageStripCacheIdentity('book-a', 'comic'),
+    );
   });
 
   it('does not slide the same chapter into fake extra pages', () => {

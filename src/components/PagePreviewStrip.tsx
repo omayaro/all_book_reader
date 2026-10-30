@@ -13,6 +13,7 @@ import { spreadPages } from '../shared/pageMode';
 import {
   PAGE_STRIP_ITEM_HEIGHT,
   pageFromStripOffset,
+  pageStripCacheIdentity,
   visibleStripPages,
 } from '../shared/pageStrip';
 import type { PageMode } from '../types';
@@ -65,13 +66,14 @@ export function PagePreviewStrip({
   }, [format, page, pageMode, readingDirection, totalPages]);
 
   const range = visibleStripPages(scrollTop, viewportHeight, totalPages);
+  const cacheIdentity = pageStripCacheIdentity(bookId, format);
 
   useEffect(() => {
     clearThumbCache();
     setThumbs({});
     setPdfDoc(null);
     return () => clearThumbCache();
-  }, [bookId, format, totalPages]);
+  }, [cacheIdentity]);
 
   useEffect(() => {
     if (format !== 'pdf' || !pdfData) {
