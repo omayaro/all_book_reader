@@ -17,11 +17,20 @@ Built with Electron, TypeScript, React, pdf.js, and epub.js.
 - **Home (file list):** options toolbar is **hidden automatically**; it returns when a book is open (respects Pin)
 
 ### Reading modes
-- **Single / Two pages** (PDF/comic spread; TXT/EPUB two-column)
+- **Single / Two pages** for PDF and comics (two-page view is a facing spread)
+- TXT **Two Pages** is two columns of the current fixed page
 - Comic **LTR / RTL** reading direction (RTL: page 1 on the right)
 - PDF/comic **Fit Width / Fit Page** and zoom
 - Opening a PDF or comic forces **Fit Page @ zoom 1** (height-aware default)
 - TXT/EPUB **font size** via zoom / font shortcuts
+
+### EPUB
+- **Right-hand table of contents** in Single and Two Pages (nav/ncx, or one row per spine file when the book has no contents)
+- The highlighted row follows the reading position. Click a row to jump there
+- **Single** scrolls the chapter instead of clipping it to the window
+- **Two Pages** shows the current screen beside the next screen. It does not split one chapter in half, and it is not the TXT two-column layout
+- **Resume** reopens at the first visible sentence. The first paint loads that location before the rest of the book
+- No right-hand page thumbnail strip (see PDF & comics)
 
 ### PDF & comics
 - **Right-hand page preview strip** (PDF, comic, and TXT fixed pages; not EPUB)
@@ -168,8 +177,8 @@ npx electron .
 .github/workflows/ CI (PR / main)
 electron/          Main process, preload, store, TXT page session
 src/
-  components/      Home, viewers, page preview strip
-  shared/          Pure helpers + unit tests
+  components/      Home, viewers, EPUB contents panel, page preview strip
+  shared/          Pure helpers + unit tests (EPUB contents and resume: epubToc.ts, epubResume.ts)
   comicPageCache.ts / thumbCache.ts  Comic & strip caches
   readerViewport.ts                  Stable stage measurement
   useReaderDragPan.ts                Click-drag pan
