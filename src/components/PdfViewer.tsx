@@ -43,6 +43,9 @@ export function PdfViewer({
   const [totalPages, setTotalPages] = useState(1);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const pageTextsRef = useRef<string[]>([]);
+  const renderGenerationRef = useRef(0);
+  const leftRenderTaskRef = useRef<pdfjs.RenderTask | null>(null);
+  const rightRenderTaskRef = useRef<pdfjs.RenderTask | null>(null);
   useReaderDragPan(containerRef);
 
   useEffect(() => {
@@ -86,7 +89,7 @@ export function PdfViewer({
 
   useEffect(() => {
     if (!doc || !leftCanvasRef.current) return;
-    let cancelled = false;
+    const generation = ++renderGenerationRef.current;
 
     const render = async () => {
       const current = clampPage(page, totalPages);
@@ -102,12 +105,35 @@ export function PdfViewer({
         height: Math.max(40, stageSize.height - borderY),
       };
 
-      await drawPage(doc, pair.left, leftCanvasRef.current!, area, fitMode, zoom, pageMode === 'two');
-      if (cancelled) return;
+      await drawPage(
+        doc,
+        pair.left,
+        leftCanvasRef.current!,
+        area,
+        fitMode,
+        zoom,
+        pageMode === 'two',
+        generation,
+        renderGenerationRef,
+        leftRenderTaskRef,
+      );
+      if (renderGenerationRef.current !== generation) return;
       if (pageMode === 'two' && pair.right && rightCanvasRef.current) {
         rightCanvasRef.current.style.display = 'block';
-        await drawPage(doc, pair.right, rightCanvasRef.current, area, fitMode, zoom, true);
+        await drawPage(
+          doc,
+          pair.right,
+          rightCanvasRef.current,
+          area,
+          fitMode,
+          zoom,
+          true,
+          generation,
+          renderGenerationRef,
+          rightRenderTaskRef,
+        );
       } else if (rightCanvasRef.current) {
+        cancelRenderTask(rightRenderTaskRef);
         rightCanvasRef.current.style.display = 'none';
         rightCanvasRef.current.width = 0;
         rightCanvasRef.current.height = 0;
@@ -116,7 +142,9 @@ export function PdfViewer({
 
     void render();
     return () => {
-      cancelled = true;
+      renderGenerationRef.current += 1;
+      cancelRenderTask(leftRenderTaskRef);
+      cancelRenderTask(rightRenderTaskRef);
     };
   }, [doc, page, pageMode, fitMode, zoom, totalPages, stageSize]);
 
@@ -148,6 +176,20 @@ export function PdfViewer({
   );
 }
 
+interface RenderSlot {
+  current: pdfjs.RenderTask | null;
+}
+
+function cancelRenderTask(slot: RenderSlot): void {
+  const task = slot.current;
+  slot.current = null;
+  task?.cancel();
+}
+
+function isStaleRender(generation: number, currentGeneration: { current: number }): boolean {
+  return currentGeneration.current !== generation;
+}
+
 async function drawPage(
   doc: pdfjs.PDFDocumentProxy,
   pageNumber: number,
@@ -156,8 +198,12 @@ async function drawPage(
   fitMode: FitMode,
   zoom: number,
   split: boolean,
+  generation: number,
+  currentGeneration: { current: number },
+  renderSlot: RenderSlot,
 ): Promise<void> {
   const pdfPage = await doc.getPage(pageNumber);
+  if (isStaleRender(generation, currentGeneration)) return;
   const base = pdfPage.getViewport({ scale: 1 });
   const gap = split ? 12 : 0;
   const availableWidth = Math.max(40, (area.width - gap) / (split ? 2 : 1));
@@ -169,7 +215,27 @@ async function drawPage(
   const viewport = pdfPage.getViewport({ scale: Math.max(0.01, fitScale * zoom * 0.999) });
   const context = canvas.getContext('2d');
   if (!context) return;
+  if (isStaleRender(generation, currentGeneration)) return;
+
+  cancelRenderTask(renderSlot);
+  if (isStaleRender(generation, currentGeneration)) return;
+
   canvas.width = viewport.width;
   canvas.height = viewport.height;
-  await pdfPage.render({ canvasContext: context, viewport }).promise;
+  // pdf.js multiplies viewport.transform onto the current matrix. A resized
+  // canvas can leave that matrix flipped, so start each render at identity.
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  if (isStaleRender(generation, currentGeneration)) return;
+
+  const task = pdfPage.render({ canvasContext: context, viewport });
+  renderSlot.current = task;
+  try {
+    await task.promise;
+  } catch (error) {
+    if (error instanceof pdfjs.RenderingCancelledException) return;
+    if (isStaleRender(generation, currentGeneration)) return;
+    throw error;
+  } finally {
+    if (renderSlot.current === task) renderSlot.current = null;
+  }
 }
